@@ -45,14 +45,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 构建并推送后端镜像
-        run: |
-          set -x
-          pwd
-          ls -la api/
-          docker info
-          OWNER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
-          docker build -t "$REGISTRY/$OWNER/projecthub-api:latest" -t "$REGISTRY/$OWNER/projecthub-api:${{ github.sha }}" -f api/Dockerfile .
-          docker push -a "$REGISTRY/$OWNER/projecthub-api"
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/dream-black/projecthub-api:latest
+            ${{ env.REGISTRY }}/dream-black/projecthub-api:${{ github.sha }}
 
   # ══════════════════════════════════════════
   # JOB 2: 前端构建 & 推送镜像
@@ -89,15 +89,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 构建并推送前端镜像
-        run: |
-          set -x
-          echo "Actor: ${{ github.actor }}"
-          echo "Event: ${{ github.event_name }}"
-          docker version
-          OWNER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
-          echo "Owner (lowercase): $OWNER"
-          docker build -t "$REGISTRY/$OWNER/projecthub-frontend:latest" -t "$REGISTRY/$OWNER/projecthub-frontend:${{ github.sha }}" ./projecthub
-          docker push -a "$REGISTRY/$OWNER/projecthub-frontend"
+        uses: docker/build-push-action@v5
+        with:
+          context: ./projecthub
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/dream-black/projecthub-frontend:latest
+            ${{ env.REGISTRY }}/dream-black/projecthub-frontend:${{ github.sha }}
 
   # ══════════════════════════════════════════
   # JOB 3: 部署到腾讯云服务器（仅 main/master push）
