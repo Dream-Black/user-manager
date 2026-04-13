@@ -156,14 +156,31 @@ jobs:
               echo "保留现有的 .env 配置"
             fi
             
-            # 生成版本信息
+            # 生成版本信息（不追加，直接更新或创建）
             echo "生成版本信息..."
             VERSION="${{ steps.version.outputs.version }}"
             BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
             GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-            echo "APP_VERSION=$VERSION" >> .env
-            echo "BUILD_DATE=$BUILD_DATE" >> .env
-            echo "GIT_COMMIT=$GIT_COMMIT" >> .env
+            
+            # 使用 sed 更新或追加变量
+            if grep -q "^APP_VERSION=" .env 2>/dev/null; then
+              sed -i "s|^APP_VERSION=.*|APP_VERSION=$VERSION|" .env
+            else
+              echo "APP_VERSION=$VERSION" >> .env
+            fi
+            
+            if grep -q "^BUILD_DATE=" .env 2>/dev/null; then
+              sed -i "s|^BUILD_DATE=.*|BUILD_DATE=$BUILD_DATE|" .env
+            else
+              echo "BUILD_DATE=$BUILD_DATE" >> .env
+            fi
+            
+            if grep -q "^GIT_COMMIT=" .env 2>/dev/null; then
+              sed -i "s|^GIT_COMMIT=.*|GIT_COMMIT=$GIT_COMMIT|" .env
+            else
+              echo "GIT_COMMIT=$GIT_COMMIT" >> .env
+            fi
+            
             echo "版本: $VERSION, 构建日期: $BUILD_DATE, 提交: $GIT_COMMIT"
             
             # 检查网络配置
