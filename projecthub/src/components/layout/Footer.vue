@@ -3,13 +3,13 @@
     <div class="footer-content">
       <span class="version">版本 {{ versionInfo.version }}</span>
       <span class="divider">|</span>
-      <span class="build-time">更新于 {{ versionInfo.buildDate }}</span>
+      <span class="build-time">更新于 {{ formattedDate }}</span>
     </div>
   </footer>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 interface VersionInfo {
   version: string
@@ -23,6 +23,23 @@ const versionInfo = ref<VersionInfo>({
   buildTime: '',
   buildDate: '-',
   commit: ''
+})
+
+// 格式化日期为北京时间 (UTC+8)，格式：YYYY-MM-DD HH:mm:ss
+const formattedDate = computed(() => {
+  const dateStr = versionInfo.value.buildDate || versionInfo.value.buildTime
+  if (!dateStr || dateStr === '-') return '-'
+  
+  const date = new Date(dateStr)
+  // 转换为北京时间 (UTC+8)
+  const beijingDate = new Date(date.getTime() + 8 * 60 * 60 * 1000)
+  const year = beijingDate.getUTCFullYear()
+  const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(beijingDate.getUTCDate()).padStart(2, '0')
+  const hours = String(beijingDate.getUTCHours()).padStart(2, '0')
+  const minutes = String(beijingDate.getUTCMinutes()).padStart(2, '0')
+  const seconds = String(beijingDate.getUTCSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 })
 
 onMounted(async () => {
