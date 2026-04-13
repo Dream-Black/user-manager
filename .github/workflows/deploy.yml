@@ -11,14 +11,11 @@ env:
 
 jobs:
   # ══════════════════════════════════════════
-  # JOB 1: 后端测试 & 构建镜像
+  # JOB 1: 后端测试 & 构建
   # ══════════════════════════════════════════
   build-api:
-    name: "后端 - 构建 & 推送镜像"
+    name: "后端 - 发布"
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - name: 检出代码
@@ -34,15 +31,15 @@ jobs:
           dotnet restore api/ProjectHub.Api.csproj
           dotnet publish api/ProjectHub.Api.csproj -c Release -o ./publish/api --no-restore
 
-      - name: 构建并推送后端镜像
-        uses: docker/build-push-action@v5
+      - name: 打包发布产物
+        run: tar -czf api-publish.tar.gz -C ./publish/api .
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
         with:
-          context: ./publish/api
-          file: ./api/Dockerfile.prod
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/dream-black/projecthub-api:latest
-            ${{ env.REGISTRY }}/dream-black/projecthub-api:${{ github.sha }}
+          name: api-publish
+          path: api-publish.tar.gz
+          retention-days: 1
 
   # ══════════════════════════════════════════
   # JOB 2: 前端构建 & 推送镜像
@@ -96,6 +93,12 @@ jobs:
       - name: 检出代码（取 docker-compose.prod.yml）
         uses: actions/checkout@v4
 
+      - name: 下载后端产物
+        uses: actions/download-artifact@v4
+        with:
+          name: api-publish
+          path: ./api-publish/
+
       - name: SSH 部署到腾讯云
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -109,12 +112,26 @@ jobs:
             # 拉取最新配置
             git pull origin main || git pull origin master
 
-            # 登录 GHCR
+            # 解压后端产物
+            mkdir -p /opt/projecthub/api-publish
+            tar -xzf api-publish/api-publish.tar.gz -C /opt/projecthub/api-publish/
+
+            # 登录 GHCR 拉取最新前端镜像
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # 拉取并重启
-            docker compose -f docker-compose.prod.yml pull api frontend
-            docker compose -f docker-compose.prod.yml up -d --no-deps api frontend
+            # 重启前端容器
+            docker compose -f docker-compose.prod.yml pull frontend
+            docker compose -f docker-compose.prod.yml up -d --no-deps frontend
+
+            # 重启后端：先停旧进程，再启动新进程
+            pkill -f "dotnet.*ProjectHub.Api" || true
+            cd /opt/projecthub/api-publish
+            MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-chennan}" \
+            ConnectionStrings__DefaultConnection="Server=mysql;Port=3306;Database=projecthub;User=root;Password=${MYSQL_ROOT_PASSWORD:-chennan}" \
+              nohup dotnet ProjectHub.Api.dll \
+              > /opt/projecthub/api.log 2>&1 &
+            sleep 5
+            curl -sf http://localhost:5000/swagger/index.html && echo "✅ API 启动成功" || echo "⚠️ API 可能未正常启动，请检查 /opt/projecthub/api.log"
 
             docker image prune -f
             echo "✅ 部署完成！$(date)"
