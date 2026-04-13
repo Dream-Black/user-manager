@@ -71,7 +71,7 @@ jobs:
           docker push --all-tags "$REGISTRY/dream-black/projecthub-frontend"
 
   # ══════════════════════════════════════════
-  # JOB 3: 部署到腾讯云服务器（仅 main/master push）
+  # JOB 3: 部署到腾讯云服务器
   # ══════════════════════════════════════════
   deploy:
     name: "部署到生产服务器"
@@ -80,39 +80,86 @@ jobs:
     if: github.event_name == 'push'
 
     steps:
-      - name: 检出代码（取 docker-compose.prod.yml）
+      - name: 检出配置
         uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            docker-compose.prod.yml
+            .env.example
+          sparse-checkout-cone-mode: false
 
-      - name: SSH 部署到腾讯云
+      - name: 克隆最新代码到服务器
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
           script: |
             set -e
-            # 克隆最新代码（使用 HTTPS + token）
-            git clone https://Dream-Black:${{ secrets.GITHUB_TOKEN }}@github.com/Dream-Black/user-manager.git /tmp/projecthub-latest
+            git clone https://Dream-Black:${{ secrets.GITHUB_TOKEN }}@github.com/Dream-Black/user-manager.git /tmp/projecthub-latest || true
             cp /tmp/projecthub-latest/docker-compose.prod.yml /opt/projecthub/
-            # 构建并发布后端
-            if ! command -v dotnet &> /dev/null; then
+            echo "=== 代码已同步 ==="
+
+      - name: 构建并发布后端
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -e
+            if which dotnet 2>/dev/null; then
+              echo "dotnet 已安装: $(which dotnet)"
+            else
+              echo "安装 dotnet..."
               wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
               chmod +x /tmp/dotnet-install.sh
               /tmp/dotnet-install.sh --channel 9.0 --install-dir /opt/dotnet
-              export PATH="$PATH:/opt/dotnet"
+              ln -sf /opt/dotnet/dotnet /usr/local/bin/dotnet
+              echo "dotnet 安装完成"
             fi
             dotnet restore /tmp/projecthub-latest/api/ProjectHub.Api.csproj
             dotnet publish /tmp/projecthub-latest/api/ProjectHub.Api.csproj -c Release -o /opt/projecthub/api-publish --no-restore
-            # 登录 GHCR
+            echo "=== 后端构建完成 ==="
+
+      - name: 拉取并启动前端容器
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 5m
+          envs: GITHUB_TOKEN,GH_ACTOR
+          script: |
+            set -e
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            # 重启前端
-            docker compose -f docker-compose.prod.yml pull frontend
-            docker compose -f docker-compose.prod.yml up -d --no-deps frontend
-            # 重启后端
+            docker compose -f /opt/projecthub/docker-compose.prod.yml pull frontend
+            docker compose -f /opt/projecthub/docker-compose.prod.yml up -d frontend
+            echo "=== 前端启动完成 ==="
+
+      - name: 启动后端服务
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 1m
+          envs: MYSQL_ROOT_PASSWORD
+          script: |
+            set -e
             pkill -f "dotnet.*ProjectHub.Api" || true
-            sleep 1
+            sleep 2
             cd /opt/projecthub/api-publish
-            MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-chennan}" ConnectionStrings__DefaultConnection="Server=mysql;Port=3306;Database=projecthub;User=root;Password=${MYSQL_ROOT_PASSWORD:-chennan}" nohup dotnet ProjectHub.Api.dll > /opt/projecthub/api.log 2>&1 &
+            export MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-chennan}"
+            export ConnectionStrings__DefaultConnection="Server=mysql;Port=3306;Database=projecthub;User=root;Password=${MYSQL_ROOT_PASSWORD}"
+            nohup dotnet ProjectHub.Api.dll --urls http://+:5000 > /opt/projecthub/api.log 2>&1 &
             sleep 5
-            curl -sf http://localhost:5000/swagger/index.html && echo "部署成功" || cat /opt/projecthub/api.log
-            docker image prune -f
+            if curl -sf http://localhost:5000/swagger/index.html; then
+              echo "=== 部署成功! ==="
+            else
+              echo "后端启动失败，日志:"
+              cat /opt/projecthub/api.log
+              exit 1
+            fi
