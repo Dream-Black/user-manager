@@ -18,16 +18,37 @@ services:
       timeout: 5s
       retries: 5
 
-  # 后端 API 由 SSH 直接用 dotnet 运行（不在 Docker 里，避免 MCR 网络问题）
+  # 后端 API 服务
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: projecthub-api
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=projecthub;User=root;Password=${MYSQL_ROOT_PASSWORD:-chennan};
+      - DeepSeek__ApiKey=${DEEPSEEK_API_KEY:-}
+      - DeepSeek__BaseUrl=https://api.deepseek.com/v1
+      - DeepSeek__Model=deepseek-chat
+    ports:
+      - "5000:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
   # 前端通过 Nginx 容器托管
   frontend:
-    image: ghcr.io/dream-black/projecthub-frontend:latest
+    build:
+      context: ./projecthub
+      dockerfile: Dockerfile
     container_name: projecthub-frontend
     restart: unless-stopped
     ports:
       - "80:80"
     depends_on:
-      - mysql
+      - api
 
 volumes:
   mysql_data:

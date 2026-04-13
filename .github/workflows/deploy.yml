@@ -55,11 +55,8 @@ jobs:
     if: github.event_name == 'push'
 
     steps:
-      - name: 下载镜像包
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-image
-          path: ./
+      - name: 检出代码
+        uses: actions/checkout@v4
 
       - name: 部署到腾讯云
         uses: appleboy/ssh-action@v1.0.3
@@ -75,17 +72,34 @@ jobs:
             echo "主机: $(hostname)"
             echo "Docker: $(docker --version)"
             echo "磁盘空间: $(df -h / | tail -1)"
-            echo "文件: $(ls -lh frontend.tar.gz 2>/dev/null || echo '不存在!')"
             echo "===== 开始部署 ====="
-            docker stop projecthub-frontend 2>/dev/null || true
-            docker rm projecthub-frontend 2>/dev/null || true
-            echo "加载镜像..."
-            zcat frontend.tar.gz | docker load
-            docker tag frontend:latest projecthub-frontend:latest
-            docker run -d \
-              --name projecthub-frontend \
-              --restart unless-stopped \
-              -p 80:80 \
-              projecthub-frontend:latest
-            echo "===== 完成 ====="
-            docker ps --filter "name=projecthub"
+            
+            # 进入项目目录
+            cd /opt/projecthub || mkdir -p /opt/projecthub && cd /opt/projecthub
+            
+            # 如果目录为空，克隆代码
+            if [ ! -d .git ]; then
+              git clone git@github.com:Dream-Black/user-manager.git .
+            else
+              git pull origin main
+            fi
+            
+            # 确保 .env 文件存在
+            if [ ! -f .env ]; then
+              echo "MYSQL_ROOT_PASSWORD=chennan" > .env
+              echo "DEEPSEEK_API_KEY=" >> .env
+            fi
+            
+            # 使用 docker-compose.prod.yml 部署
+            echo "停止旧容器..."
+            docker compose -f docker-compose.prod.yml down 2>/dev/null || true
+            
+            echo "启动服务..."
+            docker compose -f docker-compose.prod.yml up -d
+            
+            echo "等待服务启动..."
+            sleep 10
+            
+            echo "===== 部署完成 ====="
+            docker compose -f docker-compose.prod.yml ps
+            docker compose -f docker-compose.prod.yml logs --tail=20
