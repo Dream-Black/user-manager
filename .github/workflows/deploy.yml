@@ -131,34 +131,34 @@ jobs:
             VERSION=$(cat VERSION 2>/dev/null || echo "1.0.0")
             BUILD_DATE=$(date +%Y-%m-%d)
             GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-            
+
             # 使用 sed 更新或追加变量
             if grep -q "^APP_VERSION=" .env 2>/dev/null; then
               sed -i "s|^APP_VERSION=.*|APP_VERSION=$VERSION|" .env
             else
               echo "APP_VERSION=$VERSION" >> .env
             fi
-            
+
             if grep -q "^BUILD_DATE=" .env 2>/dev/null; then
               sed -i "s|^BUILD_DATE=.*|BUILD_DATE=$BUILD_DATE|" .env
             else
               echo "BUILD_DATE=$BUILD_DATE" >> .env
             fi
-            
+
             if grep -q "^GIT_COMMIT=" .env 2>/dev/null; then
               sed -i "s|^GIT_COMMIT=.*|GIT_COMMIT=$GIT_COMMIT|" .env
             else
               echo "GIT_COMMIT=$GIT_COMMIT" >> .env
             fi
-            
+
             echo "版本: $VERSION, 构建日期: $BUILD_DATE, 提交: $GIT_COMMIT"
 
             # 部署
             echo "部署服务..."
 
-            # 停止并删除旧的前端容器（保留 API 和 MySQL）
-            docker stop projecthub-frontend 2>/dev/null || true
-            docker rm -f projecthub-frontend 2>/dev/null || true
+            # 停止并删除旧容器
+            docker stop projecthub-frontend projecthub-api 2>/dev/null || true
+            docker rm -f projecthub-frontend projecthub-api 2>/dev/null || true
 
             # 构建前端镜像
             echo "构建前端镜像..."
@@ -168,6 +168,10 @@ jobs:
               --build-arg GIT_COMMIT=$GIT_COMMIT \
               -t projecthub-frontend:latest \
               ./projecthub
+
+            # 构建 API 镜像
+            echo "构建 API 镜像..."
+            docker build -t projecthub-api:latest ./api
 
             # 使用现有网络（优先使用 projecthub_default）
             NETWORK_NAME="projecthub_default"
@@ -179,11 +183,6 @@ jobs:
               fi
             fi
             echo "使用网络: $NETWORK_NAME"
-
-            # 停止并删除旧的前端容器
-            echo "清理旧的前端容器..."
-            docker stop projecthub-frontend 2>/dev/null || true
-            docker rm projecthub-frontend 2>/dev/null || true
 
             # 启动前端容器（不绑定到特定端口，只在容器网络内）
             echo "启动前端容器..."
@@ -200,8 +199,6 @@ jobs:
 
             # 部署 API 容器
             echo "部署 API 容器..."
-            docker stop projecthub-api 2>/dev/null || true
-            docker rm projecthub-api 2>/dev/null || true
             docker run -d \
               --name projecthub-api \
               --network $NETWORK_NAME \
