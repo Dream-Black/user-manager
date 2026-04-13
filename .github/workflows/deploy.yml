@@ -84,48 +84,30 @@ jobs:
           command_timeout: 15m
           debug: false
           script: |
-            set -x  # 启用调试输出
+            echo "===== 开始部署 ====="
             
-            echo "===== 准备部署目录 ====="
-            # 创建项目目录
-            if [ ! -d /opt/projecthub ]; then
-              sudo mkdir -p /opt/projecthub
-              sudo chown $(whoami):$(whoami) /opt/projecthub
-            fi
+            # 创建目录
+            mkdir -p ~/projecthub
+            cd ~/projecthub
+            pwd
             
-            cd /opt/projecthub
-            echo "当前目录: $(pwd)"
+            # 克隆代码
+            echo "克隆代码..."
+            rm -rf ~/projecthub/* 2>/dev/null || true
+            git clone https://github.com/Dream-Black/user-manager.git .
             
-            # 克隆或更新代码
-            if [ ! -d .git ]; then
-              echo "克隆代码..."
-              rm -rf /opt/projecthub/* 2>/dev/null || true
-              git clone https://github.com/Dream-Black/user-manager.git .
-            else
-              echo "更新代码..."
-              git reset --hard HEAD
-              git pull origin main
-            fi
-            
-            echo ""
-            echo "===== 目录内容 ====="
+            echo "文件列表:"
             ls -la
             
-            # 创建 .env 文件
-            if [ ! -f .env ]; then
-              echo "创建 .env 文件..."
-              echo "MYSQL_ROOT_PASSWORD=chennan" > .env
-              echo "DEEPSEEK_API_KEY=" >> .env
-            fi
+            # 创建 .env
+            echo "创建 .env..."
+            echo "MYSQL_ROOT_PASSWORD=chennan" > .env
+            echo "DEEPSEEK_API_KEY=" >> .env
             
-            echo ""
-            echo "===== 停止旧服务 ====="
-            docker compose -f docker-compose.prod.yml down 2>/dev/null || true
-            
-            echo ""
-            echo "===== 启动新服务 ====="
+            # 部署
+            echo "部署服务..."
+            docker compose -f docker-compose.prod.yml down 2>/dev/null || echo "无需停止"
             docker compose -f docker-compose.prod.yml up -d --build
             
-            echo ""
-            echo "===== 部署完成 ====="
+            echo "完成!"
             docker compose -f docker-compose.prod.yml ps
