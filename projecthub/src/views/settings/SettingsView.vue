@@ -1,197 +1,267 @@
 <template>
   <div class="settings-page">
-    <div class="page-header fade-in">
-      <h2 class="page-title">个人设置</h2>
+    <div class="page-header">
+      <div class="header-content">
+        <h1 class="page-title">个人设置</h1>
+        <p class="page-subtitle">管理您的账号偏好和系统配置</p>
+      </div>
     </div>
-    
-    <div class="settings-grid">
-      <div class="settings-section card fade-in-up">
-        <h3 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-          </svg>
-          外观设置
-        </h3>
-        <div class="setting-item">
-          <div class="setting-info">
-            <span class="setting-label">主题模式</span>
-            <span class="setting-desc">选择界面显示主题</span>
-          </div>
-          <t-select v-model="settings.themeMode" :options="themeOptions" />
-        </div>
-      </div>
-      
-      <div class="settings-section card fade-in-up stagger-1">
-        <h3 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-          </svg>
-          AI 配置
-        </h3>
-        <div class="setting-item">
-          <div class="setting-info">
-            <span class="setting-label">DeepSeek API Key</span>
-            <span class="setting-desc">用于 AI 助手功能</span>
-          </div>
-          <t-input v-model="settings.deepseekApiKey" type="password" placeholder="sk-..." style="width: 300px" />
-        </div>
-        <div class="setting-item">
-          <div class="setting-info">
-            <span class="setting-label">AI 模型</span>
-          </div>
-          <t-select v-model="settings.deepseekModel" :options="modelOptions" />
-        </div>
-      </div>
-      
-      <div class="settings-section card fade-in-up stagger-2">
-        <h3 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-          </svg>
-          工作时间
-        </h3>
-        <div class="setting-row">
-          <div class="setting-item">
-            <span class="setting-label">上班时间</span>
-            <t-input v-model="settings.workStartTime" placeholder="09:00:00" />
-          </div>
-          <div class="setting-item">
-            <span class="setting-label">下班时间</span>
-            <t-input v-model="settings.workEndTime" placeholder="18:00:00" />
-          </div>
-        </div>
-      </div>
-      
-      <div class="settings-section card fade-in-up stagger-3">
-        <h3 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-          </svg>
-          个人资料
-        </h3>
-        <div class="setting-item">
-          <span class="setting-label">当前职位</span>
-          <t-input v-model="settings.currentJob" placeholder="如：项目经理" />
-        </div>
-        <div class="setting-item">
-          <span class="setting-label">公司名称</span>
-          <t-input v-model="settings.currentCompany" placeholder="如：XX科技" />
+
+    <div class="settings-container">
+      <!-- 侧边导航 -->
+      <div class="settings-nav">
+        <div
+          v-for="section in settingsSections"
+          :key="section.key"
+          class="nav-item"
+          :class="{ active: activeSection === section.key }"
+          @click="activeSection = section.key"
+        >
+          <component :is="section.icon" />
+          <span>{{ section.label }}</span>
         </div>
       </div>
 
-      <div class="settings-section card fade-in-up stagger-4">
-        <h3 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-          </svg>
-          每日提醒
-        </h3>
-        <div class="setting-item">
-          <div class="setting-info">
-            <span class="setting-label">启用每日提醒</span>
-            <span class="setting-desc">每天固定时间提醒查看任务</span>
+      <!-- 设置内容 -->
+      <div class="settings-content">
+        <!-- 个人信息 -->
+        <div v-if="activeSection === 'profile'" class="settings-section">
+          <h2 class="section-title">个人信息</h2>
+          <div class="avatar-upload">
+            <div class="avatar-preview">
+              <span>P</span>
+            </div>
+            <div class="avatar-actions">
+              <t-button variant="outline" size="small">更换头像</t-button>
+              <p class="avatar-hint">支持 JPG、PNG，最大 2MB</p>
+            </div>
           </div>
-          <t-switch v-model="settings.reminderEnabled" />
+
+          <t-form :data="profileForm" label-align="top">
+            <t-form-item label="姓名">
+              <t-input v-model="profileForm.name" placeholder="请输入姓名" />
+            </t-form-item>
+            <t-form-item label="邮箱">
+              <t-input v-model="profileForm.email" placeholder="请输入邮箱" />
+            </t-form-item>
+            <t-form-item label="手机号">
+              <t-input v-model="profileForm.phone" placeholder="请输入手机号" />
+            </t-form-item>
+            <t-form-item label="部门">
+              <t-select v-model="profileForm.department">
+                <t-option value="tech" label="技术部" />
+                <t-option value="product" label="产品部" />
+                <t-option value="design" label="设计部" />
+                <t-option value="operation" label="运营部" />
+              </t-select>
+            </t-form-item>
+            <t-form-item label="职位">
+              <t-input v-model="profileForm.role" placeholder="请输入职位" />
+            </t-form-item>
+          </t-form>
         </div>
-        <div class="setting-item" v-if="settings.reminderEnabled">
-          <span class="setting-label">提醒时间</span>
-          <t-input v-model="settings.reminderTime" placeholder="09:00:00" />
+
+        <!-- 账号安全 -->
+        <div v-if="activeSection === 'security'" class="settings-section">
+          <h2 class="section-title">账号安全</h2>
+          <div class="security-item">
+            <div class="security-info">
+              <h4>登录密码</h4>
+              <p>已设置密码登录，建议定期更换</p>
+            </div>
+            <t-button variant="outline" size="small">修改密码</t-button>
+          </div>
+          <div class="security-item">
+            <div class="security-info">
+              <h4>两步验证</h4>
+              <p>启用后登录需要输入手机验证码</p>
+            </div>
+            <t-switch v-model="securityForm.twoFactor" />
+          </div>
+          <div class="security-item">
+            <div class="security-info">
+              <h4>登录通知</h4>
+              <p>在新设备登录时发送邮件通知</p>
+            </div>
+            <t-switch v-model="securityForm.loginNotify" />
+          </div>
+        </div>
+
+        <!-- 通知设置 -->
+        <div v-if="activeSection === 'notifications'" class="settings-section">
+          <h2 class="section-title">通知设置</h2>
+          <div class="notification-group">
+            <h4>任务通知</h4>
+            <div class="notification-item">
+              <div class="notification-info">
+                <span class="notification-label">任务到期提醒</span>
+                <span class="notification-desc">任务到期前发送通知</span>
+              </div>
+              <t-switch v-model="notificationForm.taskReminder" />
+            </div>
+            <div class="notification-item">
+              <div class="notification-info">
+                <span class="notification-label">任务分配通知</span>
+                <span class="notification-desc">被分配新任务时发送通知</span>
+              </div>
+              <t-switch v-model="notificationForm.taskAssign" />
+            </div>
+          </div>
+          <div class="notification-group">
+            <h4>项目通知</h4>
+            <div class="notification-item">
+              <div class="notification-info">
+                <span class="notification-label">项目更新通知</span>
+                <span class="notification-desc">项目有新动态时发送通知</span>
+              </div>
+              <t-switch v-model="notificationForm.projectUpdate" />
+            </div>
+            <div class="notification-item">
+              <div class="notification-info">
+                <span class="notification-label">项目周报</span>
+                <span class="notification-desc">每周一发送项目周报</span>
+              </div>
+              <t-switch v-model="notificationForm.weeklyReport" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 外观设置 -->
+        <div v-if="activeSection === 'appearance'" class="settings-section">
+          <h2 class="section-title">外观设置</h2>
+          <div class="theme-setting">
+            <h4>主题模式</h4>
+            <div class="theme-options">
+              <div
+                v-for="theme in themes"
+                :key="theme.key"
+                class="theme-option"
+                :class="{ active: appearanceForm.theme === theme.key }"
+                @click="appearanceForm.theme = theme.key"
+              >
+                <div class="theme-preview" :style="{ background: theme.preview }">
+                  <CheckIcon v-if="appearanceForm.theme === theme.key" class="check-icon" />
+                </div>
+                <span>{{ theme.label }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="density-setting">
+            <h4>界面密度</h4>
+            <t-radio-group v-model="appearanceForm.density">
+              <t-radio-button value="compact">紧凑</t-radio-button>
+              <t-radio-button value="normal">默认</t-radio-button>
+              <t-radio-button value="comfortable">宽松</t-radio-button>
+            </t-radio-group>
+          </div>
+        </div>
+
+        <!-- 保存按钮 -->
+        <div class="settings-footer">
+          <t-button theme="primary" @click="handleSave">保存设置</t-button>
         </div>
       </div>
-    </div>
-    
-    <div class="settings-footer fade-in-up stagger-5">
-      <t-button theme="primary" size="large" @click="saveSettings">
-        <template #icon>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
-          </svg>
-        </template>
-        保存设置
-      </t-button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
+import { markRaw } from 'vue'
 
-const settings = ref({
-  themeMode: 'light',
-  deepseekApiKey: '',
-  deepseekModel: 'deepseek-chat',
-  workStartTime: '09:00:00',
-  workEndTime: '18:00:00',
-  currentJob: '',
-  currentCompany: '',
-  reminderEnabled: false,
-  reminderTime: '09:00:00'
+const activeSection = ref('profile')
+
+const settingsSections = [
+  { key: 'profile', label: '个人信息', icon: markRaw(UserIcon) },
+  { key: 'security', label: '账号安全', icon: markRaw(LockOnIcon) },
+  { key: 'notifications', label: '通知设置', icon: markRaw(NotificationIcon) },
+  { key: 'appearance', label: '外观设置', icon: markRaw(PaletteIcon) }
+]
+
+const themes = [
+  { key: 'light', label: '浅色', preview: 'linear-gradient(135deg, #fff 50%, #f5f7fa 50%)' },
+  { key: 'dark', label: '深色', preview: 'linear-gradient(135deg, #1f2937 50%, #111827 50%)' },
+  { key: 'auto', label: '自动', preview: 'linear-gradient(135deg, #fff 50%, #1f2937 50%)' }
+]
+
+const profileForm = ref({
+  name: 'ProjectHub User',
+  email: 'user@projecthub.com',
+  phone: '138****8888',
+  department: 'tech',
+  role: '项目经理'
 })
 
-const themeOptions = [
-  { value: 'light', label: '浅色模式' },
-  { value: 'dark', label: '深色模式' },
-  { value: 'auto', label: '跟随系统' }
-]
+const securityForm = ref({
+  twoFactor: false,
+  loginNotify: true
+})
 
-const modelOptions = [
-  { value: 'deepseek-chat', label: 'DeepSeek Chat' },
-  { value: 'deepseek-coder', label: 'DeepSeek Coder' }
-]
+const notificationForm = ref({
+  taskReminder: true,
+  taskAssign: true,
+  projectUpdate: true,
+  weeklyReport: false
+})
 
-const fetchSettings = async () => {
-  try {
-    const res = await fetch('/api/settings')
-    if (res.ok) {
-      const data = await res.json()
-      settings.value = {
-        themeMode: data.themeMode || 'light',
-        deepseekApiKey: data.deepseekApiKey || '',
-        deepseekModel: data.deepseekModel || 'deepseek-chat',
-        workStartTime: data.workStartTime || '09:00:00',
-        workEndTime: data.workEndTime || '18:00:00',
-        currentJob: data.currentJob || '',
-        currentCompany: data.currentCompany || '',
-        reminderEnabled: data.reminderEnabled || false,
-        reminderTime: data.reminderTime || '09:00:00'
-      }
-    }
-  } catch (error) {
-    console.error('Failed to fetch settings:', error)
-  }
+const appearanceForm = ref({
+  theme: 'light',
+  density: 'normal'
+})
+
+const handleSave = () => {
+  MessagePlugin.success('设置已保存')
 }
 
-const saveSettings = async () => {
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings.value)
-    })
-    if (res.ok) {
-      MessagePlugin.success('设置已保存')
-    }
-  } catch (error) {
-    MessagePlugin.error('保存失败')
-  }
-}
-
-onMounted(fetchSettings)
+import { markRaw as vueMarkRaw } from 'vue'
+import { UserIcon, LockOnIcon, NotificationIcon, PaletteIcon, CheckIcon } from 'tdesign-icons-vue-next'
 </script>
 
 <style scoped>
-.settings-page { animation: fadeIn 0.3s ease-out; }
-.page-header { margin-bottom: var(--space-6); }
-.page-title { font-size: var(--font-size-2xl); font-weight: var(--font-weight-semibold); }
-.settings-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-5); margin-bottom: var(--space-6); }
-.settings-section { padding: var(--space-5); opacity: 0; }
-.section-title { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); margin-bottom: var(--space-4); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-light); color: var(--text-primary); }
-.setting-item { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) 0; }
-.setting-info { flex: 1; }
-.setting-label { display: block; font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); margin-bottom: 2px; color: var(--text-primary); }
-.setting-desc { font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.setting-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
-.settings-footer { display: flex; justify-content: flex-end; }
-@media (max-width: 900px) { .settings-grid { grid-template-columns: 1fr; } }
+.settings-page { max-width: 1200px; margin: 0 auto; }
+.page-header { margin-bottom: 24px; animation: fadeInUp 0.5s ease; }
+.header-content { display: flex; flex-direction: column; gap: 4px; }
+.page-title { font-size: 28px; font-weight: 700; color: var(--text-primary); margin: 0; }
+.page-subtitle { font-size: 14px; color: var(--text-secondary); margin: 0; }
+
+.settings-container { display: flex; gap: 24px; background: var(--bg-card-solid); border-radius: var(--radius-xl); border: 1px solid var(--border-light); overflow: hidden; animation: fadeInUp 0.5s ease 0.1s backwards; box-shadow: var(--shadow-card); }
+
+.settings-nav { width: 220px; padding: 20px; border-right: 1px solid var(--border-light); flex-shrink: 0; background: var(--bg-color-secondary); }
+.nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: var(--radius-lg); cursor: pointer; color: var(--text-secondary); font-size: 14px; transition: all var(--transition-fast); margin-bottom: 4px; }
+.nav-item:hover { background: var(--primary-lighter); color: var(--primary-color); }
+.nav-item.active { background: var(--primary-lighter); color: var(--primary-color); font-weight: 600; }
+.nav-item svg { width: 18px; height: 18px; }
+
+.settings-content { flex: 1; padding: 32px; overflow-y: auto; }
+.settings-section { max-width: 600px; }
+.section-title { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 0 0 24px 0; }
+
+.avatar-upload { display: flex; align-items: center; gap: 20px; margin-bottom: 24px; }
+.avatar-preview { width: 80px; height: 80px; border-radius: var(--radius-full); background: var(--gradient-primary); display: flex; align-items: center; justify-content: center; color: white; font-size: 28px; font-weight: 600; box-shadow: var(--shadow-glow); }
+.avatar-hint { font-size: 12px; color: var(--text-tertiary); margin: 8px 0 0 0; }
+
+.security-item { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--border-light); }
+.security-info h4 { font-size: 14px; font-weight: 500; color: var(--text-primary); margin: 0 0 4px 0; }
+.security-info p { font-size: 12px; color: var(--text-tertiary); margin: 0; }
+
+.notification-group { margin-bottom: 24px; }
+.notification-group h4 { font-size: 14px; font-weight: 500; color: var(--text-primary); margin: 0 0 16px 0; }
+.notification-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border-light); }
+.notification-label { font-size: 14px; color: var(--text-primary); }
+.notification-desc { font-size: 12px; color: var(--text-tertiary); display: block; }
+
+.theme-setting { margin-bottom: 24px; }
+.theme-setting h4 { font-size: 14px; font-weight: 500; color: var(--text-primary); margin: 0 0 16px 0; }
+.theme-options { display: flex; gap: 12px; }
+.theme-option { cursor: pointer; text-align: center; }
+.theme-option.active span { color: var(--primary-color); font-weight: 500; }
+.theme-preview { width: 80px; height: 56px; border-radius: var(--radius-lg); border: 2px solid var(--border-light); display: flex; align-items: center; justify-content: center; margin-bottom: 8px; transition: all var(--transition-fast); }
+.theme-option.active .theme-preview { border-color: var(--primary-color); border-width: 3px; }
+.check-icon { color: white; }
+.theme-option span { font-size: 12px; color: var(--text-secondary); }
+
+.density-setting h4 { font-size: 14px; font-weight: 500; color: var(--text-primary); margin: 0 0 16px 0; }
+
+.settings-footer { padding-top: 24px; border-top: 1px solid var(--border-light); margin-top: 32px; }
 </style>

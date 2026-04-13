@@ -1,0 +1,118 @@
+/* ================================================
+   🎨 CSS变量 - TDesign主题系统
+   ================================================ */
+
+:root {
+  /* 主色调 - 科技蓝 */
+  --primary-color: #0052D9;
+  --primary-light: #4A90E2;
+  --primary-lighter: #DBE6F5;
+  --primary-dark: #00338D;
+  --primary-darker: #002B73;
+  
+  /* 辅助色 */
+  --secondary-color: #7C4DFF;
+  --secondary-light: #B388FF;
+  --success-color: #00C853;
+  --success-light: #69F0AE;
+  --warning-color: #FFB300;
+  --warning-light: #FFE082;
+  --error-color: #FF5252;
+  --error-light: #FF8A80;
+  --info-color: #00BCD4;
+  --info-light: #80DEEA;
+  
+  /* 背景色 */
+  --bg-color: #F5F7FA;
+  --bg-color-secondary: #ECEFF1;
+  --bg-color-light: #FFFFFF;
+  --bg-color-dark: #263238;
+  --bg-card: rgba(255, 255, 255, 0.95);
+  
+  /* 文字颜色 */
+  --text-primary: #1A1A1A;
+  --text-secondary: #5F6368;
+  --text-tertiary: #9E9E9E;
+  --text-disabled: #C7CCD1;
+  --text-inverse: #FFFFFF;
+  
+  /* 边框颜色 */
+  --border-color: #E0E0E0;
+  --border-light: #EEEEEE;
+  --border-focus: #0052D9;
+  
+  /* 阴影 */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
+  
+  /* 圆角 */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+  
+  /* 间距 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  
+  /* 字体 */
+  --font-family: 'PingFang SC', 'Helvetica Neue', Helvetica, Arial, 'Microsoft YaHei', sans-serif;
+  --font-mono: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  
+  /* 字号 */
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --font-size-3xl: 30px;
+  --font-size-4xl: 36px;
+  
+  /* 行高 */
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+  
+  /* 字重 */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  /* 动画 */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 350ms ease;
+}
+
+/* 深色主题 */
+[data-theme="dark"] {
+  --bg-color: #1A1A2E;
+  --bg-color-secondary: #16213E;
+  --bg-color-light: #0F3460;
+  --bg-card: rgba(15, 52, 96, 0.95);
+  
+  --text-primary: #FFFFFF;
+  --text-secondary: #B0BEC5;
+  --text-tertiary: #78909C;
+  
+  --border-color: #37474F;
+  --border-light: #455A64;
+  
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+}

@@ -1,507 +1,795 @@
 <template>
   <div class="dashboard">
-    <!-- 快捷入口 -->
-    <section class="quick-access">
-      <div
-        v-for="(item, index) in quickActions"
-        :key="item.label"
-        class="quick-item"
-        :class="[`stagger-${index + 1}`]"
-        @click="handleQuickAction(item.path)"
-      >
-        <div class="quick-icon" :style="{ background: item.bgColor }">
-          <span v-html="item.icon"></span>
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <div class="header-content">
+        <div class="welcome-section">
+          <h1 class="page-title">欢迎回来，<span class="user-name">{{ userName }}</span> 👋</h1>
+          <p class="page-subtitle">这里是您的工作概览，继续保持高效！</p>
         </div>
-        <span class="quick-label">{{ item.label }}</span>
+        <div class="header-actions">
+          <button class="btn btn-secondary" @click="refreshData">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+              <path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            刷新数据
+          </button>
+          <button class="btn btn-primary" @click="$router.push('/projects/new')">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+              <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            新建项目
+          </button>
+        </div>
       </div>
-    </section>
+    </div>
 
     <!-- 统计卡片 -->
-    <section class="stats-grid">
-      <div
-        v-for="(stat, index) in stats"
-        :key="stat.label"
-        class="stat-card fade-in-up"
-        :class="[`stagger-${index + 1}`]"
-      >
-        <div class="stat-header">
-          <span class="stat-label">{{ stat.label }}</span>
-          <span class="stat-icon" :style="{ color: stat.color }" v-html="stat.icon"></span>
-        </div>
-        <div class="stat-value">{{ stat.value }}</div>
-        <div class="stat-trend" :class="stat.trendUp ? 'up' : 'down'">
-          <svg v-if="stat.trendUp" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
-            <polyline points="17 6 23 6 23 12"/>
-          </svg>
-          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/>
-            <polyline points="17 18 23 18 23 12"/>
-          </svg>
-          <span>{{ stat.trend }}</span>
+    <section class="stats-section">
+      <div class="stats-grid">
+        <div v-for="(stat, index) in stats" :key="stat.label" class="stat-card" :style="{ animationDelay: `${index * 0.1}s` }">
+          <div class="stat-icon" :class="stat.color">
+            <span v-html="stat.icon"></span>
+          </div>
+          <div class="stat-info">
+            <span class="stat-value">{{ stat.value }}</span>
+            <span class="stat-label">{{ stat.label }}</span>
+          </div>
+          <div class="stat-trend" :class="stat.trend > 0 ? 'up' : 'down'">
+            <svg v-if="stat.trend > 0" viewBox="0 0 24 24" fill="none" width="14" height="14">
+              <path d="M18 15l-6-6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" width="14" height="14">
+              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            {{ Math.abs(stat.trend) }}%
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- 双列布局 -->
-    <div class="dashboard-grid">
-      <!-- 进行中的项目 -->
-      <div class="card fade-in-up stagger-3">
-        <div class="card-header">
-          <h3 class="card-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
-            进行中的项目
-          </h3>
-          <router-link to="/projects" class="card-link">查看全部</router-link>
-        </div>
-        <div class="card-body">
-          <div v-if="projects.length === 0" class="empty-state">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
-            <p>暂无进行中的项目</p>
-            <t-button theme="primary" variant="outline" @click="createProject">创建第一个项目</t-button>
+    <!-- 图表区域 -->
+    <section class="charts-section">
+      <div class="charts-grid">
+        <!-- 主图表 -->
+        <div class="chart-card main-chart">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">项目趋势</h3>
+              <p class="chart-subtitle">近7天项目活动统计</p>
+            </div>
+            <div class="chart-actions">
+              <button v-for="period in ['日', '周', '月']" :key="period" 
+                class="chart-period-btn" 
+                :class="{ active: selectedPeriod === period }"
+                @click="selectedPeriod = period">
+                {{ period }}
+              </button>
+            </div>
           </div>
-          <div v-else class="project-list">
-            <div
-              v-for="(project, index) in projects"
-              :key="project.id"
-              class="project-item"
-              :style="{ animationDelay: `${0.1 * index}s` }"
-              @click="goToProject(project.id)"
-            >
-              <div class="project-icon" :style="{ background: getProjectColor(project.type) }">
+          <div class="chart-container">
+            <div class="chart-bars">
+              <div v-for="(day, index) in chartData" :key="index" class="bar-wrapper">
+                <div class="bar" :style="{ height: `${day.value}%` }"></div>
+                <span class="bar-label">{{ day.label }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 环形图 -->
+        <div class="chart-card donut-chart">
+          <div class="chart-header">
+            <h3 class="chart-title">任务分布</h3>
+          </div>
+          <div class="donut-container">
+            <svg class="donut" viewBox="0 0 100 100">
+              <circle class="donut-ring" cx="50" cy="50" r="40" stroke-width="12"/>
+              <circle class="donut-segment" cx="50" cy="50" r="40" stroke-width="12" 
+                :stroke-dasharray="`${taskDistribution.completed} ${100 - taskDistribution.completed}`"
+                stroke-dashoffset="25"/>
+              <circle class="donut-segment completed" cx="50" cy="50" r="40" stroke-width="12" 
+                :stroke-dasharray="`${taskDistribution.inProgress} ${100 - taskDistribution.inProgress}`"
+                stroke-dashoffset="25"/>
+              <circle class="donut-segment pending" cx="50" cy="50" r="40" stroke-width="12" 
+                :stroke-dasharray="`${taskDistribution.pending} ${100 - taskDistribution.pending}`"
+                stroke-dashoffset="25"/>
+            </svg>
+            <div class="donut-center">
+              <span class="donut-value">{{ taskDistribution.total }}</span>
+              <span class="donut-label">总任务</span>
+            </div>
+          </div>
+          <div class="donut-legend">
+            <div class="legend-item">
+              <span class="legend-dot completed"></span>
+              <span class="legend-text">已完成</span>
+              <span class="legend-value">{{ taskDistribution.completedPercent }}%</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot in-progress"></span>
+              <span class="legend-text">进行中</span>
+              <span class="legend-value">{{ taskDistribution.inProgressPercent }}%</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot pending"></span>
+              <span class="legend-text">待处理</span>
+              <span class="legend-value">{{ taskDistribution.pendingPercent }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 任务和项目 -->
+    <section class="content-section">
+      <div class="content-grid">
+        <!-- 近期任务 -->
+        <div class="tasks-card">
+          <div class="card-header">
+            <h3 class="card-title">近期任务</h3>
+            <router-link to="/tasks" class="card-link">查看全部</router-link>
+          </div>
+          <div class="tasks-list">
+            <div v-for="task in recentTasks" :key="task.id" class="task-item">
+              <div class="task-checkbox" :class="{ checked: task.completed }">
+                <svg v-if="task.completed" viewBox="0 0 24 24" fill="none" width="14" height="14">
+                  <path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="task-content">
+                <span class="task-title" :class="{ completed: task.completed }">{{ task.title }}</span>
+                <div class="task-meta">
+                  <span class="task-project">{{ task.project }}</span>
+                  <span class="task-due" :class="{ overdue: isOverdue(task.due) }">{{ task.due }}</span>
+                </div>
+              </div>
+              <span class="task-priority" :class="task.priority">{{ task.priorityText }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 近期项目 -->
+        <div class="projects-card">
+          <div class="card-header">
+            <h3 class="card-title">近期项目</h3>
+            <router-link to="/projects" class="card-link">查看全部</router-link>
+          </div>
+          <div class="projects-list">
+            <div v-for="project in recentProjects" :key="project.id" class="project-item" @click="$router.push(`/projects/${project.id}`)">
+              <div class="project-icon" :style="{ background: project.color }">
                 {{ project.name.charAt(0) }}
               </div>
               <div class="project-info">
-                <div class="project-name">{{ project.name }}</div>
-                <div class="project-meta">
-                  <span class="tag tag-gray">{{ getTypeLabel(project.type) }}</span>
-                  <span class="project-date">{{ formatDate(project.createdAt) }}</span>
-                </div>
+                <span class="project-name">{{ project.name }}</span>
+                <span class="project-desc">{{ project.description }}</span>
               </div>
               <div class="project-progress">
-                <t-progress
-                  :percentage="project.progress || 0"
-                  :color="getProgressColor(project.progress || 0)"
-                  :show-text="false"
-                  theme="line"
-                  size="small"
-                />
-                <span class="progress-text">{{ project.progress || 0 }}%</span>
+                <div class="progress-bar">
+                  <div class="progress-fill" :style="{ width: `${project.progress}%` }"></div>
+                </div>
+                <span class="progress-text">{{ project.progress }}%</span>
               </div>
             </div>
           </div>
         </div>
       </div>
+    </section>
 
-      <!-- 今日任务 -->
-      <div class="card fade-in-up stagger-4">
-        <div class="card-header">
-          <h3 class="card-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 11l3 3L22 4"/>
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-            </svg>
-            今日任务
-          </h3>
-          <router-link to="/tasks" class="card-link">查看全部</router-link>
-        </div>
-        <div class="card-body">
-          <div v-if="todayTasks.length === 0" class="empty-state">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M9 11l3 3L22 4"/>
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-            </svg>
-            <p>今日任务已完成</p>
-          </div>
-          <div v-else class="task-list">
-            <div
-              v-for="(task, index) in todayTasks"
-              :key="task.id"
-              class="task-item"
-              :style="{ animationDelay: `${0.1 * index}s` }"
-              @click="toggleTask(task)"
-            >
-              <t-checkbox
-                :checked="task.status === 'completed'"
-                @change="() => toggleTask(task)"
-              />
-              <div class="task-info">
-                <span class="task-title" :class="{ completed: task.status === 'completed' }">
-                  {{ task.title }}
-                </span>
-                <span class="task-project">{{ task.projectName }}</span>
-              </div>
-              <t-tag :theme="getPriorityTheme(task.priority)" variant="light" size="small">
-                {{ getPriorityLabel(task.priority) }}
-              </t-tag>
-            </div>
-          </div>
-        </div>
+    <!-- 快捷操作 -->
+    <section class="quick-actions-section">
+      <h3 class="section-title">快捷操作</h3>
+      <div class="quick-actions-grid">
+        <button v-for="(action, index) in quickActions" :key="action.label" 
+          class="quick-action-btn" 
+          :style="{ animationDelay: `${index * 0.05}s` }"
+          @click="$router.push(action.path)">
+          <span class="action-icon" v-html="action.icon"></span>
+          <span class="action-label">{{ action.label }}</span>
+        </button>
       </div>
-    </div>
-
-    <!-- 时间线预览 -->
-    <div class="card fade-in-up stagger-5">
-      <div class="card-header">
-        <h3 class="card-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-          最近活动时间
-        </h3>
-        <router-link to="/timeline" class="card-link">查看全部</router-link>
-      </div>
-      <div class="card-body">
-        <div v-if="recentActivities.length === 0" class="empty-state">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-          <p>暂无活动记录</p>
-        </div>
-        <div v-else class="activity-timeline">
-          <div
-            v-for="(activity, index) in recentActivities"
-            :key="activity.id"
-            class="timeline-item"
-            :style="{ animationDelay: `${0.1 * index}s` }"
-          >
-            <div class="timeline-dot" :style="{ background: activity.color }"></div>
-            <div class="timeline-content">
-              <div class="timeline-header">
-                <span class="timeline-action">{{ activity.action }}</span>
-                <span class="timeline-time">{{ formatTime(activity.createdAt) }}</span>
-              </div>
-              <p class="timeline-desc">{{ activity.details }}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { MessagePlugin } from 'tdesign-vue-next'
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
-import 'dayjs/locale/zh-cn'
+import { ref } from 'vue'
 
-dayjs.extend(relativeTime)
-dayjs.locale('zh-cn')
+const userName = '张三'
 
-const router = useRouter()
-
-const projects = ref([])
-const todayTasks = ref([])
-const recentActivities = ref([])
-
-const quickActions = [
-  {
-    label: '新建项目',
-    path: '/projects?action=create',
-    icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
-    bgColor: 'rgba(37, 99, 235, 0.1)'
-  },
-  {
-    label: '创建任务',
-    path: '/tasks?action=create',
-    icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
-    bgColor: 'rgba(16, 185, 129, 0.1)'
-  },
-  {
-    label: 'AI 助手',
-    path: '/ai',
-    icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>',
-    bgColor: 'rgba(139, 92, 246, 0.1)'
-  },
-  {
-    label: '甘特图',
-    path: '/gantt',
-    icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="6" y1="18" x2="14" y2="18"/></svg>',
-    bgColor: 'rgba(245, 158, 11, 0.1)'
-  }
-]
+const selectedPeriod = ref('周')
 
 const stats = ref([
-  {
-    label: '项目总数',
-    value: 0,
-    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
-    color: '#2563EB',
-    trend: '+0 本月',
-    trendUp: true
+  { 
+    label: '总项目数', 
+    value: '12', 
+    icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    color: 'primary',
+    trend: 12
   },
-  {
-    label: '进行中',
-    value: 0,
-    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
-    color: '#F59E0B',
-    trend: '+0 本周',
-    trendUp: true
+  { 
+    label: '进行中任务', 
+    value: '28', 
+    icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    color: 'success',
+    trend: 8
   },
-  {
-    label: '已完成',
-    value: 0,
-    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-    color: '#10B981',
-    trend: '+0 本周',
-    trendUp: true
+  { 
+    label: '团队成员', 
+    value: '8', 
+    icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    color: 'warning',
+    trend: 0
   },
-  {
-    label: '延期任务',
-    value: 0,
-    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
-    color: '#EF4444',
-    trend: '-0',
-    trendUp: false
+  { 
+    label: '本周完成', 
+    value: '45', 
+    icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 4L12 14.01l-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    color: 'info',
+    trend: 23
   }
 ])
 
-// 获取数据
-const fetchData = async () => {
-  try {
-    // 获取项目
-    const projectRes = await fetch('/api/projects')
-    if (projectRes.ok) {
-      const data = await projectRes.json()
-      projects.value = data.slice(0, 5)
-      stats.value[0].value = data.length
-      stats.value[1].value = data.filter(p => p.status === 'in_progress').length
-      stats.value[2].value = data.filter(p => p.status === 'completed').length
-    }
+const chartData = ref([
+  { label: '周一', value: 65 },
+  { label: '周二', value: 80 },
+  { label: '周三', value: 45 },
+  { label: '周四', value: 90 },
+  { label: '周五', value: 75 },
+  { label: '周六', value: 55 },
+  { label: '周日', value: 40 }
+])
 
-    // 获取今日任务
-    const taskRes = await fetch('/api/tasks')
-    if (taskRes.ok) {
-      const tasks = await taskRes.json()
-      const today = dayjs().format('YYYY-MM-DD')
-      todayTasks.value = tasks
-        .filter(t => dayjs(t.dueDate).format('YYYY-MM-DD') === today)
-        .slice(0, 8)
-      stats.value[3].value = tasks.filter(t => t.status === 'overdue').length
-    }
-
-    // 获取最近活动
-    const timelineRes = await fetch('/api/timelines/recent?limit=5')
-    if (timelineRes.ok) {
-      recentActivities.value = await timelineRes.json()
-    }
-  } catch (error) {
-    console.error('Failed to fetch data:', error)
-  }
-}
-
-const handleQuickAction = (path) => {
-  router.push(path)
-}
-
-const createProject = () => {
-  router.push('/projects?action=create')
-}
-
-const goToProject = (id) => {
-  router.push(`/projects/${id}`)
-}
-
-const toggleTask = async (task) => {
-  try {
-    await fetch(`/api/tasks/${task.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...task,
-        status: task.status === 'completed' ? 'pending' : 'completed'
-      })
-    })
-    task.status = task.status === 'completed' ? 'pending' : 'completed'
-    MessagePlugin.success(task.status === 'completed' ? '任务已完成' : '任务已重置')
-  } catch (error) {
-    MessagePlugin.error('操作失败')
-  }
-}
-
-const formatDate = (date) => {
-  return dayjs(date).format('MM/DD')
-}
-
-const formatTime = (date) => {
-  return dayjs(date).fromNow()
-}
-
-const getProjectColor = (type) => {
-  const colors = {
-    'web': 'rgba(37, 99, 235, 0.1)',
-    'mobile': 'rgba(16, 185, 129, 0.1)',
-    'design': 'rgba(139, 92, 246, 0.1)',
-    'other': 'rgba(107, 114, 128, 0.1)'
-  }
-  return colors[type] || colors.other
-}
-
-const getTypeLabel = (type) => {
-  const labels = { 'web': 'Web', 'mobile': '移动端', 'design': '设计', 'other': '其他' }
-  return labels[type] || '其他'
-}
-
-const getProgressColor = (progress) => {
-  if (progress < 30) return '#EF4444'
-  if (progress < 70) return '#F59E0B'
-  return '#10B981'
-}
-
-const getPriorityTheme = (priority) => {
-  const themes = { 'high': 'danger', 'medium': 'warning', 'low': 'success' }
-  return themes[priority] || 'default'
-}
-
-const getPriorityLabel = (priority) => {
-  const labels = { 'high': '高', 'medium': '中', 'low': '低' }
-  return labels[priority] || '普通'
-}
-
-onMounted(() => {
-  fetchData()
+const taskDistribution = ref({
+  completed: 65,
+  completedPercent: 65,
+  inProgress: 25,
+  inProgressPercent: 25,
+  pending: 10,
+  pendingPercent: 10,
+  total: 48
 })
+
+const recentTasks = ref([
+  { id: 1, title: '完成用户调研报告', project: '产品优化', due: '今天', priority: 'high', priorityText: '高', completed: false },
+  { id: 2, title: '更新API文档', project: '技术文档', due: '明天', priority: 'medium', priorityText: '中', completed: false },
+  { id: 3, title: '审核设计稿', project: '界面改版', due: '3天后', priority: 'low', priorityText: '低', completed: true },
+  { id: 4, title: '提交周报', project: '日常工作', due: '周五', priority: 'medium', priorityText: '中', completed: false },
+  { id: 5, title: '代码评审', project: '功能开发', due: '已过期', priority: 'high', priorityText: '高', completed: false }
+])
+
+const recentProjects = ref([
+  { id: 1, name: 'AI助手', description: '智能对话系统', progress: 75, color: 'linear-gradient(135deg, #3B82F6, #60A5FA)' },
+  { id: 2, name: '数据分析', description: '用户行为分析', progress: 60, color: 'linear-gradient(135deg, #10B981, #34D399)' },
+  { id: 3, name: '移动端', description: 'APP开发项目', progress: 45, color: 'linear-gradient(135deg, #F59E0B, #FBBF24)' },
+  { id: 4, name: '官网改版', description: '企业官网升级', progress: 90, color: 'linear-gradient(135deg, #6366F1, #818CF8)' }
+])
+
+const quickActions = ref([
+  { label: '创建任务', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/tasks/new' },
+  { label: '发起会议', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M15 10l4.553-2.276A1 1 0 0121 8.723v6.554a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/calendar' },
+  { label: 'AI对话', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/ai' },
+  { label: '导出报告', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/reports' },
+  { label: '团队管理', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/team' },
+  { label: '消息通知', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M18 8A6 6 0 106 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/notifications' }
+])
+
+const refreshData = () => {
+  // 刷新数据逻辑
+  console.log('Refreshing data...')
+}
+
+const isOverdue = (due) => {
+  return due === '已过期'
+}
 </script>
 
 <style scoped>
 .dashboard {
-  animation: fadeIn 0.4s ease-out;
+  padding: var(--space-6);
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  animation: fadeIn 0.5s ease;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* 页面头部 */
+.page-header {
+  margin-bottom: var(--space-8);
 }
 
-/* 快捷入口 */
-.quick-access {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-}
-
-.quick-item {
+.header-content {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  background: var(--bg-secondary);
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--border-light);
-  cursor: pointer;
-  transition: all var(--transition-base);
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-6);
 }
 
-.quick-item:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-lg);
-  border-color: var(--primary-200);
+.welcome-section {
+  animation: fadeInUp 0.6s ease;
 }
 
-.quick-item:hover .quick-icon {
-  transform: scale(1.1) rotate(5deg);
-}
-
-.quick-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-xl);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--primary-500);
-  transition: transform var(--transition-bounce);
-}
-
-.quick-label {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+.page-title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
   color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.user-name {
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.page-subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.header-actions {
+  display: flex;
+  gap: var(--space-3);
+  animation: fadeInUp 0.6s ease 0.1s backwards;
 }
 
 /* 统计卡片 */
+.stats-section {
+  margin-bottom: var(--space-8);
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--space-5);
-  margin-bottom: var(--space-6);
 }
 
 .stat-card {
-  background: var(--bg-secondary);
+  background: var(--bg-card-solid);
   border-radius: var(--radius-xl);
-  border: 1px solid var(--border-light);
   padding: var(--space-5);
-  transition: all var(--transition-base);
-  opacity: 0;
-  transform: translateY(16px);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-card);
+  animation: cardEnter 0.6s ease backwards;
+  transition: all var(--transition-normal);
 }
 
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--primary-light);
 }
 
-.stat-header {
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-3);
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stat-icon.primary {
+  background: var(--primary-lighter);
+  color: var(--primary-color);
+}
+
+.stat-icon.success {
+  background: var(--success-lighter);
+  color: var(--success-color);
+}
+
+.stat-icon.warning {
+  background: var(--warning-lighter);
+  color: var(--warning-color);
+}
+
+.stat-icon.info {
+  background: var(--info-lighter);
+  color: var(--info-color);
+}
+
+.stat-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-value {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  line-height: 1.2;
 }
 
 .stat-label {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-}
-
-.stat-value {
-  font-size: var(--font-size-4xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
-  line-height: 1;
-  margin-bottom: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .stat-trend {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: 2px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.stat-trend.up {
+  color: var(--success-color);
+  background: var(--success-lighter);
+}
+
+.stat-trend.down {
+  color: var(--error-color);
+  background: var(--error-lighter);
+}
+
+/* 图表区域 */
+.charts-section {
+  margin-bottom: var(--space-8);
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-5);
+}
+
+.chart-card {
+  background: var(--bg-card-solid);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-card);
+  animation: cardEnter 0.6s ease 0.2s backwards;
+}
+
+.chart-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+}
+
+.chart-title {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.chart-subtitle {
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
 }
 
-.stat-trend.up {
-  color: var(--success-500);
+.chart-actions {
+  display: flex;
+  gap: var(--space-1);
+  background: var(--bg-color-secondary);
+  padding: var(--space-1);
+  border-radius: var(--radius-base);
 }
 
-.stat-trend.down {
-  color: var(--error-500);
+.chart-period-btn {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
 }
 
-/* 双列布局 */
-.dashboard-grid {
+.chart-period-btn:hover {
+  color: var(--text-primary);
+}
+
+.chart-period-btn.active {
+  background: var(--bg-card-solid);
+  color: var(--primary-color);
+  box-shadow: var(--shadow-xs);
+}
+
+/* 柱状图 */
+.chart-container {
+  height: 200px;
+}
+
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 100%;
+  gap: var(--space-3);
+}
+
+.bar-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.bar {
+  width: 100%;
+  max-width: 40px;
+  background: var(--gradient-primary);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.bar:hover {
+  filter: brightness(1.1);
+  transform: scaleX(1.1);
+}
+
+.bar-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  margin-top: var(--space-2);
+}
+
+/* 环形图 */
+.donut-container {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  margin: 0 auto var(--space-5);
+}
+
+.donut {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.donut-ring {
+  fill: none;
+  stroke: var(--bg-color-secondary);
+}
+
+.donut-segment {
+  fill: none;
+  stroke: var(--primary-color);
+  stroke-dasharray: 0 100;
+  transition: stroke-dasharray 1s ease;
+}
+
+.donut-segment.completed {
+  stroke: var(--success-color);
+}
+
+.donut-segment.pending {
+  stroke: var(--warning-color);
+}
+
+.donut-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.donut-value {
+  display: block;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+}
+
+.donut-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+.donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+}
+
+.legend-dot.completed {
+  background: var(--success-color);
+}
+
+.legend-dot.in-progress {
+  background: var(--primary-color);
+}
+
+.legend-dot.pending {
+  background: var(--warning-color);
+}
+
+.legend-text {
+  flex: 1;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.legend-value {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+/* 任务和项目 */
+.content-section {
+  margin-bottom: var(--space-8);
+}
+
+.content-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: var(--space-5);
+}
+
+.tasks-card,
+.projects-card {
+  background: var(--bg-card-solid);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-card);
+  animation: cardEnter 0.6s ease 0.3s backwards;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: var(--space-5);
 }
 
-/* 项目列表 */
-.project-list {
+.card-title {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.card-link {
+  font-size: var(--font-size-sm);
+  color: var(--primary-color);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.card-link:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+/* 任务列表 */
+.tasks-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  transition: background var(--transition-fast);
+}
+
+.task-item:hover {
+  background: var(--bg-color-secondary);
+}
+
+.task-checkbox {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.task-checkbox:hover {
+  border-color: var(--primary-color);
+}
+
+.task-checkbox.checked {
+  background: var(--success-color);
+  border-color: var(--success-color);
+  color: white;
+}
+
+.task-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-title {
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.task-title.completed {
+  text-decoration: line-through;
+  color: var(--text-tertiary);
+}
+
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.task-project,
+.task-due {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+.task-due.overdue {
+  color: var(--error-color);
+}
+
+.task-priority {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.task-priority.high {
+  background: var(--error-lighter);
+  color: var(--error-color);
+}
+
+.task-priority.medium {
+  background: var(--warning-lighter);
+  color: var(--warning-color);
+}
+
+.task-priority.low {
+  background: var(--primary-lighter);
+  color: var(--primary-color);
+}
+
+/* 项目列表 */
+.projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 .project-item {
@@ -512,23 +800,10 @@ onMounted(() => {
   border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all var(--transition-fast);
-  animation: slideInRight 0.3s ease-out forwards;
-  opacity: 0;
-}
-
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
 }
 
 .project-item:hover {
-  background: var(--gray-50);
+  background: var(--bg-color-secondary);
 }
 
 .project-icon {
@@ -538,9 +813,10 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--primary-600);
-  font-weight: var(--font-weight-semibold);
-  font-size: var(--font-size-lg);
+  color: white;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-base);
+  flex-shrink: 0;
 }
 
 .project-info {
@@ -549,166 +825,104 @@ onMounted(() => {
 }
 
 .project-name {
+  display: block;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   color: var(--text-primary);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
-.project-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.project-date {
+.project-desc {
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
 }
 
 .project-progress {
   width: 100px;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--bg-color-secondary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--gradient-primary);
+  border-radius: var(--radius-full);
+  transition: width 0.8s ease;
 }
 
 .progress-text {
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
-  width: 32px;
-  text-align: right;
 }
 
-/* 任务列表 */
-.task-list {
+/* 快捷操作 */
+.quick-actions-section {
+  animation: fadeInUp 0.6s ease 0.4s backwards;
+}
+
+.section-title {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-5);
+}
+
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--space-4);
+}
+
+.quick-action-btn {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-}
-
-.task-item {
-  display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3);
-  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-4);
+  background: var(--bg-card-solid);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
   cursor: pointer;
-  transition: all var(--transition-fast);
-  animation: fadeIn 0.3s ease-out forwards;
-  opacity: 0;
+  transition: all var(--transition-normal);
+  animation: cardEnter 0.5s ease backwards;
 }
 
-.task-item:hover {
-  background: var(--gray-50);
+.quick-action-btn:hover {
+  background: var(--gradient-primary);
+  color: white;
+  border-color: transparent;
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
 }
 
-.task-info {
-  flex: 1;
-  min-width: 0;
+.quick-action-btn:hover .action-icon {
+  color: white;
 }
 
-.task-title {
-  display: block;
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  margin-bottom: 2px;
-}
-
-.task-title.completed {
-  text-decoration: line-through;
-  color: var(--text-tertiary);
-}
-
-.task-project {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-}
-
-/* 时间线 */
-.activity-timeline {
-  display: flex;
-  flex-direction: column;
-}
-
-.timeline-item {
-  display: flex;
-  gap: var(--space-4);
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--border-light);
-  animation: fadeInUp 0.3s ease-out forwards;
-  opacity: 0;
-}
-
-.timeline-item:last-child {
-  border-bottom: none;
-}
-
-.timeline-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  margin-top: 5px;
-}
-
-.timeline-content {
-  flex: 1;
-}
-
-.timeline-header {
+.action-icon {
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: var(--primary-lighter);
+  color: var(--primary-color);
+  transition: all var(--transition-fast);
 }
 
-.timeline-action {
+.action-label {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   color: var(--text-primary);
-}
-
-.timeline-time {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-}
-
-.timeline-desc {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
-/* 空状态 */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-8) var(--space-4);
-  text-align: center;
-  color: var(--text-tertiary);
-}
-
-.empty-state svg {
-  margin-bottom: var(--space-4);
-  opacity: 0.5;
-}
-
-.empty-state p {
-  margin-bottom: var(--space-4);
-}
-
-/* 卡片链接 */
-.card-link {
-  font-size: var(--font-size-sm);
-  color: var(--primary-500);
-  text-decoration: none;
   transition: color var(--transition-fast);
-}
-
-.card-link:hover {
-  color: var(--primary-600);
 }
 
 /* 响应式 */
@@ -716,17 +930,39 @@ onMounted(() => {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  .quick-access {
-    grid-template-columns: repeat(2, 1fr);
+  
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .quick-actions-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
 @media (max-width: 768px) {
-  .dashboard-grid {
+  .dashboard {
+    padding: var(--space-4);
+  }
+  
+  .header-content {
+    flex-direction: column;
+  }
+  
+  .header-actions {
+    width: 100%;
+  }
+  
+  .header-actions .btn {
+    flex: 1;
+  }
+  
+  .content-grid {
     grid-template-columns: 1fr;
   }
-  .stats-grid {
-    grid-template-columns: 1fr;
+  
+  .quick-actions-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 </style>

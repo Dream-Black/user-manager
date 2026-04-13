@@ -1,209 +1,447 @@
 <template>
-  <aside class="sidebar">
-    <!-- Logo 区域 -->
+  <aside class="sidebar" :class="{ collapsed: isCollapsed }">
+    <!-- Logo区域 -->
     <div class="sidebar-header">
-      <div class="sidebar-logo">
-        <div class="sidebar-logo-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
-          </svg>
-        </div>
-        <span class="sidebar-logo-text">ProjectHub</span>
+      <div class="logo-area" @click="$router.push('/')">
+        <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+          <rect width="32" height="32" rx="8" fill="url(#sidebarLogoGradient)"/>
+          <path d="M10 16L14 20L22 12" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <defs>
+            <linearGradient id="sidebarLogoGradient" x1="0" y1="0" x2="32" y2="32">
+              <stop stop-color="#3B82F6"/>
+              <stop offset="1" stop-color="#60A5FA"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <span v-if="!isCollapsed" class="logo-text">AI Claw</span>
+      </div>
+      <button class="collapse-btn" @click="toggleCollapse" :title="isCollapsed ? '展开' : '收起'">
+        <svg v-if="isCollapsed" viewBox="0 0 24 24" fill="none" width="20" height="20">
+          <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <svg v-else viewBox="0 0 24 24" fill="none" width="20" height="20">
+          <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- 用户信息 -->
+    <div class="user-section">
+      <img :src="user?.avatar || ''" :alt="user?.name" class="user-avatar" />
+      <div v-if="!isCollapsed" class="user-info">
+        <span class="user-name">{{ user?.name || '访客' }}</span>
+        <span class="user-role">{{ user?.role || '管理员' }}</span>
       </div>
     </div>
 
     <!-- 导航菜单 -->
-    <nav class="sidebar-nav">
-      <!-- 主要功能 -->
-      <div class="nav-section">
-        <div class="nav-section-title">概览</div>
+    <nav class="nav-section">
+      <div v-for="group in navGroups" :key="group.title" class="nav-group">
+        <div v-if="!isCollapsed" class="nav-group-title">{{ group.title }}</div>
         <router-link
-          v-for="(item, index) in mainNav"
+          v-for="item in group.items"
           :key="item.path"
           :to="item.path"
-          class="nav-item"
+          class="nav-link"
           :class="{ active: isActive(item.path) }"
-          :style="{ animationDelay: `${index * 0.05}s` }"
+          :title="isCollapsed ? item.title : ''"
         >
-          <span class="nav-item-icon" v-html="item.icon"></span>
-          <span class="nav-item-text">{{ item.label }}</span>
-          <span v-if="item.badge" class="nav-item-badge">{{ item.badge }}</span>
-        </router-link>
-      </div>
-
-      <!-- 项目管理 -->
-      <div class="nav-section">
-        <div class="nav-section-title">项目</div>
-        <router-link
-          v-for="(item, index) in projectNav"
-          :key="item.path"
-          :to="item.path"
-          class="nav-item"
-          :class="{ active: isActive(item.path) }"
-          :style="{ animationDelay: `${(index + 3) * 0.05}s` }"
-        >
-          <span class="nav-item-icon" v-html="item.icon"></span>
-          <span class="nav-item-text">{{ item.label }}</span>
-        </router-link>
-      </div>
-
-      <!-- 设置 -->
-      <div class="nav-section">
-        <div class="nav-section-title">系统</div>
-        <router-link
-          v-for="(item, index) in systemNav"
-          :key="item.path"
-          :to="item.path"
-          class="nav-item"
-          :class="{ active: isActive(item.path) }"
-          :style="{ animationDelay: `${(index + 5) * 0.05}s` }"
-        >
-          <span class="nav-item-icon" v-html="item.icon"></span>
-          <span class="nav-item-text">{{ item.label }}</span>
+          <span class="nav-indicator"></span>
+          <span class="nav-icon" v-html="item.icon"></span>
+          <span v-if="!isCollapsed" class="nav-text">{{ item.title }}</span>
+          <span v-if="!isCollapsed && item.badge" class="nav-badge">{{ item.badge }}</span>
         </router-link>
       </div>
     </nav>
 
-    <!-- 底部用户信息 -->
+    <!-- 底部操作 -->
     <div class="sidebar-footer">
-      <div class="sidebar-user">
-        <div class="sidebar-user-avatar">P</div>
-        <div class="sidebar-user-info">
-          <div class="sidebar-user-name">ProjectHub User</div>
-          <div class="sidebar-user-role">项目经理</div>
-        </div>
-      </div>
+      <router-link to="/settings" class="nav-link" :class="{ active: isActive('/settings') }" :title="isCollapsed ? '设置' : ''">
+        <span class="nav-indicator"></span>
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
+            <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+          </svg>
+        </span>
+        <span v-if="!isCollapsed" class="nav-text">设置</span>
+      </router-link>
+      <a class="nav-link" @click="handleLogout" :title="isCollapsed ? '退出' : ''">
+        <span class="nav-indicator"></span>
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
+            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <span v-if="!isCollapsed" class="nav-text">退出登录</span>
+      </a>
     </div>
   </aside>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
+const router = useRouter()
+
+const isCollapsed = ref(false)
+
+const user = ref({
+  name: '张三',
+  role: '产品经理',
+  avatar: ''
+})
+
+const navGroups = ref([
+  {
+    title: '主导航',
+    items: [
+      { 
+        path: '/', 
+        title: '仪表盘', 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/></svg>'
+      },
+      { 
+        path: '/projects', 
+        title: '项目管理', 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        badge: '8'
+      },
+      { 
+        path: '/tasks', 
+        title: '任务中心', 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        badge: '12'
+      },
+      { 
+        path: '/timeline', 
+        title: '时间线', 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      },
+      { 
+        path: '/gantt', 
+        title: '甘特图', 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M8 6h10M8 12h10M8 18h6M4 6h.01M4 12h.01M4 18h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      },
+    ]
+  },
+  {
+    title: '内容管理',
+    items: [
+      { 
+        path: '/categories', 
+        title: '分类管理', 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      },
+      { 
+        path: '/review', 
+        title: '审核中心', 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        badge: '3'
+      },
+    ]
+  },
+  {
+    title: '智能助手',
+    items: [
+      { 
+        path: '/ai', 
+        title: 'AI 助手', 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 2a8 8 0 110 16 8 8 0 010-16zm-1 5v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      },
+    ]
+  }
+])
+
+const toggleCollapse = () => {
+  isCollapsed.value = !isCollapsed.value
+  localStorage.setItem('sidebarCollapsed', isCollapsed.value)
+}
 
 const isActive = (path) => {
-  if (path === '/') return route.path === '/'
+  if (path === '/') {
+    return route.path === '/'
+  }
   return route.path.startsWith(path)
 }
 
-const mainNav = [
-  {
-    label: '工作台',
-    path: '/',
-    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>'
-  },
-  {
-    label: '任务管理',
-    path: '/tasks',
-    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>'
-  },
-  {
-    label: '甘特图',
-    path: '/gantt',
-    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="6" y1="18" x2="14" y2="18"/></svg>'
-  }
-]
+const handleLogout = () => {
+  // 实际项目中调用登出API
+  router.push('/login')
+}
 
-const projectNav = [
-  {
-    label: '项目列表',
-    path: '/projects',
-    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
-  },
-  {
-    label: '时间线',
-    path: '/timeline',
-    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
-  },
-  {
-    label: '复盘总结',
-    path: '/review',
-    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>'
-  },
-  {
-    label: '分类管理',
-    path: '/categories',
-    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>'
-  }
-]
-
-const systemNav = [
-  {
-    label: 'AI 助手',
-    path: '/ai',
-    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
-  },
-  {
-    label: '个人设置',
-    path: '/settings',
-    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
-  }
-]
+// 恢复折叠状态
+const savedCollapsed = localStorage.getItem('sidebarCollapsed')
+if (savedCollapsed !== null) {
+  isCollapsed.value = savedCollapsed === 'true'
+}
 </script>
 
 <style scoped>
-.sidebar-footer {
-  padding: var(--space-4);
-  border-top: 1px solid var(--border-light);
+.sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--sidebar-width);
+  background: var(--gradient-sidebar);
+  border-right: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 100;
+  overflow: hidden;
 }
 
-.sidebar-user {
+.sidebar.collapsed {
+  width: var(--sidebar-collapsed);
+}
+
+/* 头部 */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-4);
+  border-bottom: 1px solid var(--border-light);
+  height: var(--header-height);
+}
+
+.logo-area {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2);
-  border-radius: var(--radius-lg);
   cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.logo-area:hover {
+  opacity: 0.8;
+}
+
+.logo-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.logo-text {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  white-space: nowrap;
+}
+
+.collapse-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-base);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.collapse-btn:hover {
+  background: var(--primary-lighter);
+  color: var(--primary-color);
+}
+
+/* 用户区域 */
+.user-section {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  margin: var(--space-3) var(--space-3);
+  border-radius: var(--radius-xl);
+  background: var(--primary-lighter);
   transition: background var(--transition-fast);
 }
 
-.sidebar-user:hover {
-  background: var(--gray-50);
+.user-section:hover {
+  background: var(--primary-light);
 }
 
-.sidebar-user-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--primary-400), var(--primary-500));
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background: var(--gradient-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-weight: var(--font-weight-medium);
+  font-weight: 600;
+  font-size: 14px;
+  flex-shrink: 0;
+  border: 2px solid white;
 }
 
-.sidebar-user-info {
-  flex: 1;
-  min-width: 0;
+.user-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.sidebar-user-name {
+.user-name {
   font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.sidebar-user-role {
+.user-role {
   font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* 导航 */
+.nav-section {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-2) var(--space-3);
+}
+
+.nav-group {
+  margin-bottom: var(--space-4);
+}
+
+.nav-group-title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-1);
+  white-space: nowrap;
 }
 
-.nav-item {
+.nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
+  margin-bottom: 2px;
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.nav-indicator {
+  position: absolute;
+  left: -4px;
+  width: 4px;
+  height: 24px;
+  background: var(--gradient-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   opacity: 0;
-  animation: fadeInLeft 0.3s ease-out forwards;
+  transition: all var(--transition-fast);
 }
 
-@keyframes fadeInLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+.nav-link:hover {
+  color: var(--primary-color);
+  background: var(--primary-lighter);
+}
+
+.nav-link.active {
+  color: var(--primary-color);
+  background: var(--primary-lighter);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+}
+
+.nav-link.active .nav-indicator {
+  opacity: 1;
+}
+
+.nav-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nav-text {
+  font-size: var(--font-size-sm);
+  flex: 1;
+}
+
+.nav-badge {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--gradient-primary);
+  color: white;
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+/* 底部 */
+.sidebar-footer {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-light);
+}
+
+/* 折叠状态下 */
+.sidebar.collapsed .sidebar-header {
+  justify-content: center;
+  padding: var(--space-4) var(--space-2);
+}
+
+.sidebar.collapsed .logo-area {
+  justify-content: center;
+}
+
+.sidebar.collapsed .collapse-btn {
+  position: absolute;
+  right: -12px;
+  background: var(--bg-card-solid);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
+}
+
+.sidebar.collapsed .user-section {
+  justify-content: center;
+  padding: var(--space-3);
+  margin: var(--space-2);
+}
+
+.sidebar.collapsed .nav-section {
+  padding: var(--space-2);
+}
+
+.sidebar.collapsed .nav-link {
+  justify-content: center;
+  padding: var(--space-3);
+}
+
+.sidebar.collapsed .nav-group-title {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  padding: var(--space-2);
 }
 </style>

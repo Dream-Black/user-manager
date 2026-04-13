@@ -1,177 +1,241 @@
 <template>
   <div class="review-page">
-    <div class="page-header fade-in">
-      <h2 class="page-title">复盘总结</h2>
-      <t-button theme="primary" @click="showCreate = true">
-        <template #icon><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></template>
-        新增复盘
-      </t-button>
-    </div>
-    
-    <div class="review-grid">
-      <div v-for="(review, index) in reviews" :key="review.id" 
-           class="review-card card fade-in-up"
-           :style="{ animationDelay: `${0.08 * index}s` }">
-        <div class="review-header">
-          <h3 class="review-title">{{ review.title || '复盘记录 ' + review.id }}</h3>
-          <span class="review-date">{{ formatDate(review.createdAt) }}</span>
-        </div>
-        <div class="review-content">
-          <div class="review-item">
-            <span class="review-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
-              做得好的
-            </span>
-            <p>{{ review.goodPoints || review.good || '暂无记录' }}</p>
-          </div>
-          <div class="review-item">
-            <span class="review-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              需要改进的
-            </span>
-            <p>{{ review.improvements || review.improve || '暂无记录' }}</p>
-          </div>
-          <div class="review-item">
-            <span class="review-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-              下一步行动
-            </span>
-            <p>{{ review.nextActions || review.nextSteps || '暂无记录' }}</p>
-          </div>
-        </div>
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <div class="header-content">
+        <h1 class="page-title">复盘总结</h1>
+        <p class="page-subtitle">记录项目经验，持续改进</p>
       </div>
-    </div>
-    
-    <div v-if="reviews.length === 0" class="empty-state fade-in">
-      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-        <line x1="16" y1="13" x2="8" y2="13"/>
-        <line x1="16" y1="17" x2="8" y2="17"/>
-      </svg>
-      <p>暂无复盘记录</p>
-      <t-button theme="primary" variant="outline" @click="showCreate = true">创建复盘</t-button>
+      <div class="header-actions">
+        <t-button theme="primary" @click="showCreateDialog = true">
+          <template #icon><AddIcon /></template>
+          新建复盘
+        </t-button>
+      </div>
     </div>
 
-    <!-- 创建复盘弹窗 -->
-    <t-dialog
-      v-model:visible="showCreate"
-      header="新增复盘"
-      :footer="false"
-      width="520px"
-    >
-      <div class="form-group">
-        <label>复盘标题</label>
-        <t-input v-model="newReview.title" placeholder="给这次复盘起个标题" />
+    <!-- 筛选 -->
+    <div class="filter-bar">
+      <t-input v-model="searchQuery" placeholder="搜索复盘..." clearable style="width: 280px">
+        <template #prefix-icon><SearchIcon /></template>
+      </t-input>
+      <t-select v-model="filterType" placeholder="类型" clearable style="width: 140px">
+        <t-option value="sprint" label="迭代复盘" />
+        <t-option value="project" label="项目复盘" />
+        <t-option value="weekly" label="周总结" />
+        <t-option value="monthly" label="月总结" />
+      </t-select>
+    </div>
+
+    <!-- 复盘列表 -->
+    <div class="review-grid">
+      <div
+        v-for="(review, index) in filteredReviews"
+        :key="review.id"
+        class="review-card"
+        :style="{ animationDelay: `${index * 0.05}s` }"
+        @click="goToDetail(review)"
+      >
+        <div class="card-header" :style="{ background: review.gradient }">
+          <div class="card-type">{{ review.typeText }}</div>
+          <div class="card-date">{{ review.date }}</div>
+        </div>
+
+        <div class="card-body">
+          <h3 class="review-title">{{ review.title }}</h3>
+          <p class="review-summary">{{ review.summary }}</p>
+
+          <div class="review-metrics">
+            <div class="metric">
+              <CheckCircleIcon class="metric-icon success" />
+              <span class="metric-value">{{ review.goodCount }}</span>
+              <span class="metric-label">做得好的</span>
+            </div>
+            <div class="metric">
+              <ErrorIcon class="metric-icon warning" />
+              <span class="metric-value">{{ review.improveCount }}</span>
+              <span class="metric-label">需改进</span>
+            </div>
+            <div class="metric">
+              <StarIcon class="metric-icon primary" />
+              <span class="metric-value">{{ review.actionCount }}</span>
+              <span class="metric-label">行动计划</span>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <div class="author">
+              <div class="author-avatar" :style="{ background: review.authorColor }">
+                {{ review.author.charAt(0) }}
+              </div>
+              <span class="author-name">{{ review.author }}</span>
+            </div>
+            <t-tag :type="getStatusType(review.status)" variant="light" size="small">
+              {{ review.statusText }}
+            </t-tag>
+          </div>
+        </div>
       </div>
-      <div class="form-group">
-        <label>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
-          做得好的
-        </label>
-        <t-textarea v-model="newReview.goodPoints" placeholder="总结这次做得好的地方" />
-      </div>
-      <div class="form-group">
-        <label>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          需要改进的
-        </label>
-        <t-textarea v-model="newReview.improvements" placeholder="反思需要改进的地方" />
-      </div>
-      <div class="form-group">
-        <label>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          下一步行动
-        </label>
-        <t-textarea v-model="newReview.nextActions" placeholder="制定下一步行动计划" />
-      </div>
-      <div class="form-actions">
-        <t-button variant="outline" @click="showCreate = false">取消</t-button>
-        <t-button theme="primary" @click="createReview">创建复盘</t-button>
-      </div>
+    </div>
+
+    <!-- 创建弹窗 -->
+    <t-dialog v-model:visible="showCreateDialog" header="新建复盘" width="600px" :footer="null">
+      <t-form ref="formRef" :data="formData" :rules="rules" label-align="top">
+        <t-form-item label="标题" name="title">
+          <t-input v-model="formData.title" placeholder="请输入复盘标题" />
+        </t-form-item>
+
+        <t-form-item label="类型" name="type">
+          <t-select v-model="formData.type">
+            <t-option value="sprint" label="迭代复盘" />
+            <t-option value="project" label="项目复盘" />
+            <t-option value="weekly" label="周总结" />
+            <t-option value="monthly" label="月总结" />
+          </t-select>
+        </t-form-item>
+
+        <t-form-item label="概述" name="summary">
+          <t-textarea v-model="formData.summary" placeholder="简要描述本次复盘" />
+        </t-form-item>
+
+        <div class="form-actions">
+          <t-button variant="outline" @click="showCreateDialog = false">取消</t-button>
+          <t-button theme="primary" @click="handleSubmit">确定</t-button>
+        </div>
+      </t-form>
     </t-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
-import dayjs from 'dayjs'
 
-const reviews = ref([])
-const showCreate = ref(false)
+const router = useRouter()
 
-const newReview = ref({
-  title: '',
-  goodPoints: '',
-  improvements: '',
-  nextActions: ''
+const searchQuery = ref('')
+const filterType = ref('all')
+const showCreateDialog = ref(false)
+const formRef = ref(null)
+
+const formData = ref({ title: '', type: 'sprint', summary: '' })
+const rules = { title: [{ required: true, message: '请输入标题', trigger: 'blur' }] }
+
+const reviews = ref([
+  {
+    id: 1, title: 'Website Redesign 项目复盘', summary: '本次复盘总结了官网重构项目中的经验教训',
+    type: 'project', typeText: '项目复盘', date: '2026-04-10',
+    status: 'completed', statusText: '已完成',
+    goodCount: 5, improveCount: 3, actionCount: 4,
+    author: '张三', authorColor: '#2196F3',
+    gradient: 'linear-gradient(135deg, #2196F3 0%, #1976D2 100%)'
+  },
+  {
+    id: 2, title: 'Sprint 23 迭代复盘', summary: '本迭代完成了用户中心模块的开发',
+    type: 'sprint', typeText: '迭代复盘', date: '2026-04-08',
+    status: 'in_progress', statusText: '进行中',
+    goodCount: 3, improveCount: 2, actionCount: 3,
+    author: '李四', authorColor: '#4CAF50',
+    gradient: 'linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)'
+  },
+  {
+    id: 3, title: '4月第一周工作总结', summary: '本周完成了API接口开发和文档编写',
+    type: 'weekly', typeText: '周总结', date: '2026-04-05',
+    status: 'completed', statusText: '已完成',
+    goodCount: 4, improveCount: 1, actionCount: 2,
+    author: '王五', authorColor: '#FF9800',
+    gradient: 'linear-gradient(135deg, #FF9800 0%, #F57C00 100%)'
+  }
+])
+
+const filteredReviews = computed(() => {
+  return reviews.value.filter(r => {
+    const matchSearch = !searchQuery.value || r.title.includes(searchQuery.value)
+    const matchType = filterType.value === 'all' || r.type === filterType.value
+    return matchSearch && matchType
+  })
 })
 
-const fetchReviews = async () => {
-  try {
-    const res = await fetch('/api/reviews')
-    if (res.ok) {
-      reviews.value = await res.json()
-    }
-  } catch (error) {
-    console.error('Failed to fetch reviews:', error)
-  }
+const getStatusType = (status) => {
+  const types = { completed: 'success', in_progress: 'primary', pending: 'default' }
+  return types[status] || 'default'
 }
 
-const createReview = async () => {
-  if (!newReview.value.goodPoints && !newReview.value.improvements && !newReview.value.nextActions) {
-    MessagePlugin.warning('请至少填写一项内容')
-    return
-  }
+const goToDetail = (review) => {
+  console.log('查看详情:', review)
+}
 
-  try {
-    const res = await fetch('/api/reviews', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        projectId: 1, // 默认项目
-        title: newReview.value.title || '复盘记录',
-        goodPoints: newReview.value.goodPoints,
-        improvements: newReview.value.improvements,
-        nextActions: newReview.value.nextActions
-      })
+const handleSubmit = async () => {
+  const result = await formRef.value.validate()
+  if (result === true) {
+    reviews.value.unshift({
+      id: Date.now(),
+      ...formData.value,
+      typeText: formData.value.type === 'sprint' ? '迭代复盘' :
+                formData.value.type === 'project' ? '项目复盘' :
+                formData.value.type === 'weekly' ? '周总结' : '月总结',
+      date: new Date().toISOString().split('T')[0],
+      status: 'in_progress', statusText: '进行中',
+      goodCount: 0, improveCount: 0, actionCount: 0,
+      author: '当前用户', authorColor: '#9C27B0',
+      gradient: 'linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)'
     })
-    if (res.ok) {
-      const review = await res.json()
-      reviews.value.unshift(review)
-      showCreate.value = false
-      newReview.value = { title: '', goodPoints: '', improvements: '', nextActions: '' }
-      MessagePlugin.success('复盘创建成功')
-    }
-  } catch (error) {
-    MessagePlugin.error('创建失败')
+    showCreateDialog.value = false
+    MessagePlugin.success('复盘已创建')
   }
 }
 
-const formatDate = (d) => dayjs(d).format('YYYY-MM-DD')
-
-onMounted(fetchReviews)
+import { AddIcon, SearchIcon, CheckCircleIcon, ErrorIcon, StarIcon } from 'tdesign-icons-vue-next'
 </script>
 
 <style scoped>
-.review-page { animation: fadeIn 0.3s ease-out; }
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-6); }
-.page-title { font-size: var(--font-size-2xl); font-weight: var(--font-weight-semibold); }
-.review-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-5); }
-.review-card { padding: var(--space-5); opacity: 0; transition: all 0.2s; }
-.review-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-.review-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-4); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-light); }
-.review-title { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
-.review-date { font-size: var(--font-size-xs); color: var(--text-tertiary); flex-shrink: 0; }
-.review-content { display: flex; flex-direction: column; gap: var(--space-4); }
-.review-item span { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-xs); font-weight: var(--font-weight-medium); color: var(--text-tertiary); margin-bottom: var(--space-2); }
-.review-item p { font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.6; min-height: 40px; }
-.empty-state { display: flex; flex-direction: column; align-items: center; padding: var(--space-12); color: var(--text-tertiary); }
-.empty-state svg { margin-bottom: var(--space-4); opacity: 0.4; }
-.empty-state p { margin-bottom: var(--space-4); }
-.form-group { margin-bottom: var(--space-4); }
-.form-group label { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-primary); margin-bottom: var(--space-2); }
-.form-actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-6); }
-@media (max-width: 900px) { .review-grid { grid-template-columns: 1fr; } }
+.review-page { max-width: 1600px; margin: 0 auto; }
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; animation: fadeInUp 0.5s ease; }
+.header-content { display: flex; flex-direction: column; gap: 4px; }
+.page-title { font-size: 28px; font-weight: 700; color: var(--text-primary); margin: 0; }
+.page-subtitle { font-size: 14px; color: var(--text-secondary); margin: 0; }
+.filter-bar { display: flex; gap: 12px; margin-bottom: 24px; animation: fadeInUp 0.5s ease 0.1s backwards; }
+
+.review-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; }
+
+.review-card {
+  background: var(--bg-container);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  animation: cardEnter 0.6s ease backwards;
+}
+.review-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+
+.card-header {
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.card-type { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.9); }
+.card-date { font-size: 12px; color: rgba(255,255,255,0.7); }
+
+.card-body { padding: 20px; }
+.review-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0 0 8px 0; }
+.review-summary { font-size: 13px; color: var(--text-secondary); margin: 0 0 16px 0; line-height: 1.5; }
+
+.review-metrics { display: flex; gap: 16px; padding: 16px 0; border-top: 1px solid var(--border-light); border-bottom: 1px solid var(--border-light); margin-bottom: 16px; }
+.metric { flex: 1; text-align: center; }
+.metric-icon { width: 20px; height: 20px; margin-bottom: 4px; }
+.metric-icon.success { color: #10B981; }
+.metric-icon.warning { color: #FF9800; }
+.metric-icon.primary { color: #2196F3; }
+.metric-value { display: block; font-size: 20px; font-weight: 700; color: var(--text-primary); }
+.metric-label { font-size: 11px; color: var(--text-tertiary); }
+
+.card-footer { display: flex; justify-content: space-between; align-items: center; }
+.author { display: flex; align-items: center; gap: 8px; }
+.author-avatar { width: 28px; height: 28px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 600; }
+.author-name { font-size: 13px; color: var(--text-secondary); }
+
+.form-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-light); }
 </style>
