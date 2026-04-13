@@ -10,9 +10,6 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  # ══════════════════════════════════════════
-  # 前后端一起构建
-  # ══════════════════════════════════════════
   build:
     name: "构建"
     runs-on: ubuntu-latest
@@ -24,24 +21,13 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      # --- 后端构建 ---
-      - name: 设置 .NET 9
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "9.0.x"
-
-      - name: 后端发布
-        run: |
-          dotnet restore api/ProjectHub.Api.csproj
-          dotnet publish api/ProjectHub.Api.csproj -c Release -o ./publish/api --no-restore
-
-      # --- 前端构建 ---
+      # 前端
       - name: 设置 Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: 安装前端依赖
+      - name: 安装依赖
         working-directory: projecthub
         run: npm install
 
@@ -49,26 +35,19 @@ jobs:
         working-directory: projecthub
         run: npm run build
 
-      # --- 打包前端为 Docker 镜像并保存 ---
-      - name: 构建前端 Docker 镜像
+      - name: 构建并打包 Docker 镜像
         run: |
           docker build -t frontend:latest projecthub/
-
-      - name: 打包镜像为 tar
-        run: |
           docker save frontend:latest | gzip > frontend.tar.gz
-          ls -lh frontend.tar.gz
+          du -sh frontend.tar.gz
 
       - name: 上传镜像包
         uses: actions/upload-artifact@v4
         with:
-          name: deploy-artifacts
+          name: frontend-image
           path: frontend.tar.gz
           retention-days: 1
 
-  # ══════════════════════════════════════════
-  # 部署到腾讯云（从 runner 传镜像，绕过 GHCR）
-  # ══════════════════════════════════════════
   deploy:
     name: "部署到生产服务器"
     needs: [ build ]
@@ -76,57 +55,55 @@ jobs:
     if: github.event_name == 'push'
 
     steps:
-      - name: 检出配置
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            docker-compose.prod.yml
-          sparse-checkout-cone-mode: false
-
       - name: 下载镜像包
         uses: actions/download-artifact@v4
         with:
-          name: deploy-artifacts
+          name: frontend-image
           path: ./
 
-      - name: 传输并部署到腾讯云
+      - name: 启动本地 HTTP 服务器
+        run: |
+          ls -lh frontend.tar.gz
+          python3 -m http.server 8888 --directory . &
+          sleep 2
+          echo "HTTP 服务器已启动"
+
+      - name: 部署到腾讯云
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 15m
-          envs: ACTIONS_RUNTIME_TOKEN,ACTIONS_RUNTIME_URL
           script: |
             set -e
-            echo "=== 诊断信息 ==="
-            echo "Docker版本: $(docker --version 2>&1 || echo 'docker not found')"
-            echo "磁盘空间:"
-            df -h / | tail -1
-            ls -lh frontend.tar.gz 2>/dev/null || echo "frontend.tar.gz 不存在!"
+            echo "=== 1/6: 检查服务器环境 ==="
+            echo "Docker: $(docker --version)"
+            echo "磁盘: $(df -h / | tail -1 | awk '{print $3}')"
+            echo "可用空间: $(df -h / | tail -1 | awk '{print $4}')"
 
-            echo "=== 1/5: 更新配置 ==="
-            cp docker-compose.prod.yml /opt/projecthub/
-
-            echo "=== 2/5: 加载镜像 ==="
-            if [ -f frontend.tar.gz ]; then
-              echo "文件大小: $(ls -lh frontend.tar.gz | awk '{print $5}')"
-              zcat frontend.tar.gz | docker load
-              echo "镜像加载完成"
-            else
-              echo "ERROR: frontend.tar.gz 不存在!"
-              exit 1
-            fi
-
-            echo "=== 3/5: 标记镜像 ==="
-            docker tag frontend:latest projecthub-frontend:latest
-
-            echo "=== 4/5: 重启容器 ==="
+            echo "=== 2/6: 清理旧容器 ==="
             docker stop projecthub-frontend 2>/dev/null || true
             docker rm projecthub-frontend 2>/dev/null || true
-            docker run -d --name projecthub-frontend --restart unless-stopped -p 80:80 projecthub-frontend:latest
 
-            echo "=== 5/5: 验证 ==="
+            echo "=== 3/6: 下载前端镜像 (约200MB) ==="
+            # 从 runner 的 HTTP 服务器下载
+            curl -s --progress-bar http://${{ secrets.SERVER_HOST }}:8888/frontend.tar.gz -o /tmp/frontend.tar.gz
+            echo "下载完成: $(du -sh /tmp/frontend.tar.gz)"
+
+            echo "=== 4/6: 加载镜像 ==="
+            zcat /tmp/frontend.tar.gz | docker load
+            docker tag frontend:latest projecthub-frontend:latest
+
+            echo "=== 5/6: 启动容器 ==="
+            docker run -d \
+              --name projecthub-frontend \
+              --restart unless-stopped \
+              -p 80:80 \
+              projecthub-frontend:latest
+
+            echo "=== 6/6: 验证 ==="
             sleep 3
             curl -sf http://localhost/ && echo "前端运行正常" || echo "前端启动失败"
             docker ps --filter "name=projecthub"
+            echo "=== 部署完成! ==="
