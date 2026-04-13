@@ -11,10 +11,10 @@ env:
 
 jobs:
   # ══════════════════════════════════════════
-  # JOB 1: 前端构建 & 推送镜像（仅需要这个）
+  # 前后端一起构建
   # ══════════════════════════════════════════
-  build-frontend:
-    name: "前端 - 构建 & 推送镜像"
+  build:
+    name: "构建"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -24,12 +24,24 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      # --- 后端构建 ---
+      - name: 设置 .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: 后端发布
+        run: |
+          dotnet restore api/ProjectHub.Api.csproj
+          dotnet publish api/ProjectHub.Api.csproj -c Release -o ./publish/api --no-restore
+
+      # --- 前端构建 ---
       - name: 设置 Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: 安装依赖
+      - name: 安装前端依赖
         working-directory: projecthub
         run: npm install
 
@@ -37,54 +49,76 @@ jobs:
         working-directory: projecthub
         run: npm run build
 
-      - name: 登录 GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 构建并推送前端镜像
+      # --- 打包前端为 Docker 镜像并保存 ---
+      - name: 构建前端 Docker 镜像
         run: |
-          docker build -t "$REGISTRY/dream-black/projecthub-frontend:latest" -t "$REGISTRY/dream-black/projecthub-frontend:${{ github.sha }}" projecthub/
-          docker push --all-tags "$REGISTRY/dream-black/projecthub-frontend"
+          docker build -t frontend:latest projecthub/
+
+      - name: 打包镜像为 tar
+        run: |
+          docker save frontend:latest | gzip > frontend.tar.gz
+          ls -lh frontend.tar.gz
+
+      - name: 上传镜像包
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-artifacts
+          path: frontend.tar.gz
+          retention-days: 1
 
   # ══════════════════════════════════════════
-  # JOB 2: 部署到腾讯云（服务器能访问 GHCR）
+  # 部署到腾讯云（从 runner 传镜像，绕过 GHCR）
   # ══════════════════════════════════════════
   deploy:
     name: "部署到生产服务器"
-    needs: [ build-frontend ]
+    needs: [ build ]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
 
     steps:
-      - name: 检出配置（取 docker-compose.prod.yml）
+      - name: 检出配置
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
             docker-compose.prod.yml
           sparse-checkout-cone-mode: false
 
-      - name: 传输配置并重启前端容器
+      - name: 下载镜像包
+        uses: actions/download-artifact@v4
+        with:
+          name: deploy-artifacts
+          path: ./
+
+      - name: 传输并部署到腾讯云
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 10m
+          command_timeout: 15m
           script: |
             set -e
-
-            # 更新配置
+            echo "=== 1/5: 更新配置 ==="
             cp docker-compose.prod.yml /opt/projecthub/
 
-            # 登录 GHCR（从 runner 传入 token）
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            echo "=== 2/5: 接收前端镜像 ==="
+            # 通过 SSH 管道接收 runner 传来的镜像 tar
+            cat frontend.tar.gz | gunzip | docker load
+            echo "镜像加载完成"
 
-            # 拉取并重启前端
-            docker compose -f /opt/projecthub/docker-compose.prod.yml pull frontend
-            docker compose -f /opt/projecthub/docker-compose.prod.yml up -d frontend
+            echo "=== 3/5: 标记镜像为 latest ==="
+            docker tag frontend:latest projecthub-frontend:latest
 
-            echo "=== 前端部署成功! ==="
-            docker compose -f /opt/projecthub/docker-compose.prod.yml ps
+            echo "=== 4/5: 重启前端容器 ==="
+            docker stop projecthub-frontend || true
+            docker rm projecthub-frontend || true
+            docker run -d \
+              --name projecthub-frontend \
+              --restart unless-stopped \
+              -p 80:80 \
+              projecthub-frontend:latest
+
+            echo "=== 5/5: 验证 ==="
+            sleep 3
+            curl -sf http://localhost/ && echo "前端运行正常" || echo "前端启动失败"
+            docker ps --filter "name=projecthub"
