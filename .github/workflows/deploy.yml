@@ -128,7 +128,10 @@ jobs:
             
             # 部署
             echo "部署服务..."
-            docker-compose -f docker-compose.prod.yml down 2>/dev/null || echo "无需停止"
+            # 强制停止并删除所有相关容器
+            docker stop projecthub-api projecthub-frontend projecthub-mysql 2>/dev/null || true
+            docker rm -f projecthub-api projecthub-frontend projecthub-mysql 2>/dev/null || true
+            # 使用 docker-compose 重新部署
             docker-compose -f docker-compose.prod.yml up -d --build
             
             echo "完成!"
