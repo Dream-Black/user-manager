@@ -154,6 +154,13 @@ public class TasksController : ControllerBase
         return Created($"/api/tasks/{task.Id}", task);
     }
 
+    /// <summary>更新任务（PATCH 部分更新）</summary>
+    [HttpPatch("{id}")]
+    public async Task<IActionResult> PatchTask(int id, [FromBody] UpdateTaskRequest request)
+    {
+        return await UpdateTask(id, request);
+    }
+
     /// <summary>更新任务</summary>
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateTask(int id, [FromBody] UpdateTaskRequest request)

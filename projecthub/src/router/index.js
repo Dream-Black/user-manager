@@ -24,6 +24,12 @@ const routes = [
     meta: { title: '项目列表' }
   },
   {
+    path: '/projects/new',
+    name: 'ProjectNew',
+    component: ProjectDetail,
+    meta: { title: '新建项目' }
+  },
+  {
     path: '/projects/:id',
     name: 'ProjectDetail',
     component: ProjectDetail,

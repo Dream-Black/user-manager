@@ -43,6 +43,15 @@
     ],
     "bab766372b0040ce94e6e38880359d31": [
       {
+        "expertId": "ApiTestingExpert",
+        "name": "Harper",
+        "profession": "API测试专家",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/08-QualityAssurance/ApiTestingExpert/ApiTestingExpert.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/08-QualityAssurance/ApiTestingExpert/ApiTestingExpert_zh.md",
+        "usedAt": 1776101611308,
+        "industryId": "08-QualityAssurance"
+      },
+      {
         "expertId": "BackendArchitect",
         "name": "Joy",
         "profession": "后端架构师",
@@ -59,17 +68,8 @@
         "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/01-Design/UiDesigner/UiDesigner_zh.md",
         "usedAt": 1776098324036,
         "industryId": "01-Design"
-      },
-      {
-        "expertId": "AiImagePromptEngineer",
-        "name": "Alex",
-        "profession": "AI图像提示词工程师",
-        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/01-Design/AiImagePromptEngineer/AiImagePromptEngineer.png",
-        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/01-Design/AiImagePromptEngineer/AiImagePromptEngineer_zh.md",
-        "usedAt": 1776098214240,
-        "industryId": "01-Design"
       }
     ]
   },
-  "lastUpdated": 1776101485900
+  "lastUpdated": 1776103059383
 }

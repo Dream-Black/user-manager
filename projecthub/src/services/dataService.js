@@ -42,6 +42,26 @@ export const projectService = {
   // 删除项目
   delete: async (id) => {
     return api.delete(`/projects/${id}`)
+  },
+
+  // 获取项目任务
+  getTasks: async (projectId) => {
+    return api.get(`/projects/${projectId}/tasks`)
+  },
+
+  // 创建项目任务
+  createTask: async (projectId, data) => {
+    return api.post(`/projects/${projectId}/tasks`, data)
+  },
+
+  // 更新任务
+  updateTask: async (taskId, data) => {
+    return api.patch(`/tasks/${taskId}`, data)
+  },
+
+  // 删除任务
+  deleteTask: async (taskId) => {
+    return api.delete(`/tasks/${taskId}`)
   }
 }
 

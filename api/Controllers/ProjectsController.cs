@@ -154,6 +154,78 @@ public class ProjectsController : ControllerBase
 
         return Ok(new { message = "删除成功" });
     }
+
+    /// <summary>获取项目任务列表</summary>
+    [HttpGet("{id}/tasks")]
+    public async Task<IActionResult> GetProjectTasks(int id)
+    {
+        var project = await _context.Projects.FindAsync(id);
+        if (project == null)
+            return NotFound(new { message = "项目不存在" });
+
+        var tasks = await _context.Tasks
+            .Where(t => t.ProjectId == id && t.Status != "archived")
+            .OrderByDescending(t => t.UpdatedAt)
+            .Select(t => new
+            {
+                t.Id,
+                t.Title,
+                t.Description,
+                t.Priority,
+                t.Status,
+                t.Progress,
+                t.PlanStartDate,
+                t.PlanEndDate,
+                t.ActualStartDate,
+                t.ActualEndDate,
+                t.EstimatedHours,
+                t.CreatedAt,
+                t.UpdatedAt
+            })
+            .ToListAsync();
+
+        return Ok(tasks);
+    }
+
+    /// <summary>创建项目任务</summary>
+    [HttpPost("{id}/tasks")]
+    public async Task<IActionResult> CreateProjectTask(int id, [FromBody] CreateProjectTaskRequest request)
+    {
+        var project = await _context.Projects.FindAsync(id);
+        if (project == null)
+            return NotFound(new { message = "项目不存在" });
+
+        var task = new ProjectTask
+        {
+            ProjectId = id,
+            Title = request.Title,
+            Description = request.Description,
+            Priority = request.Priority ?? "medium",
+            Status = request.Status ?? "todo",
+            Progress = 0,
+            PlanStartDate = request.PlanStartDate,
+            PlanEndDate = request.PlanEndDate,
+            CreatedAt = DateTime.Now,
+            UpdatedAt = DateTime.Now
+        };
+
+        _context.Tasks.Add(task);
+        await _context.SaveChangesAsync();
+
+        // 创建时间线记录
+        var timeline = new Timeline
+        {
+            ProjectId = id,
+            EventType = "task_created",
+            Title = "任务创建",
+            Description = $"创建了任务「{task.Title}」",
+            OccurredAt = DateTime.Now
+        };
+        _context.Timelines.Add(timeline);
+        await _context.SaveChangesAsync();
+
+        return Created($"/api/tasks/{task.Id}", task);
+    }
 }
 
 public class CreateProjectRequest
@@ -172,4 +244,14 @@ public class UpdateProjectRequest
     public string? Type { get; set; }
     public string? Customer { get; set; }
     public string? Status { get; set; }
+}
+
+public class CreateProjectTaskRequest
+{
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string? Priority { get; set; }
+    public string? Status { get; set; }
+    public DateTime? PlanStartDate { get; set; }
+    public DateTime? PlanEndDate { get; set; }
 }
