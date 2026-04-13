@@ -164,7 +164,7 @@ docker compose exec mysql mysql -u root -p projecthub
 
 ---
 
-## 整体流程图
+## 测试标记（端口开放验证）
 
 ```
 开发者 push → GitHub Actions
