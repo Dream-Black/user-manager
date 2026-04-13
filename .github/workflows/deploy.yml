@@ -69,15 +69,6 @@ jobs:
           path: frontend.tar.gz
           retention-days: 1
 
-      - name: 上传版本文件
-        uses: actions/upload-artifact@v4
-        with:
-          name: version-file
-          path: |
-            VERSION
-            version.json
-          retention-days: 1
-
   deploy:
     name: "部署到生产服务器"
     needs: [ build ]
@@ -104,19 +95,6 @@ jobs:
             echo "Docker: $(docker --version 2>/dev/null || echo '未安装')"
             echo "Docker Compose: $(docker compose version 2>/dev/null || docker-compose --version 2>/dev/null || echo '未安装')"
             df -h / | head -2
-            
-      - name: 下载版本文件
-        uses: actions/download-artifact@v4
-        with:
-          name: version-file
-          path: ./
-
-      - name: 读取版本号
-        id: version
-        run: |
-          VERSION=$(cat VERSION)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "部署版本: $VERSION"
 
       - name: 部署到腾讯云
         uses: appleboy/ssh-action@v1.0.3
@@ -128,63 +106,53 @@ jobs:
           debug: false
           script: |
             echo "===== 开始部署 ====="
-            
-            # 切换到项目目录
+
+            # 使用正确的项目路径
             cd /opt/projecthub
             pwd
-            
-            # 更新代码（保留数据卷）
+
+            # 更新代码
             echo "更新代码..."
-            if [ -d .git ]; then
-              git fetch origin
-              git reset --hard origin/main
-            else
-              echo "错误: 不是有效的 Git 仓库"
-              exit 1
-            fi
-            
+            git fetch origin
+            git reset --hard origin/main
+
             echo "文件列表:"
             ls -la
-            
-            # 创建 .env（如果不存在则创建）
-            echo "检查 .env 配置..."
+
+            # 使用现有的 .env 文件
+            echo "使用现有 .env 配置..."
             if [ ! -f .env ]; then
-              echo "创建新的 .env 文件..."
               echo "MYSQL_ROOT_PASSWORD=ProjectHub@2026!Secure#Pass" > .env
               echo "DEEPSEEK_API_KEY=" >> .env
-            else
-              echo "保留现有的 .env 配置"
             fi
-            
-            # 生成版本信息（不追加，直接更新或创建）
+
+            # 生成版本信息
             echo "生成版本信息..."
-            VERSION="${{ steps.version.outputs.version }}"
-            BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            VERSION=$(cat VERSION 2>/dev/null || echo "1.0.0")
+            BUILD_DATE=$(date +%Y-%m-%d)
             GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-            
-            # 使用 sed 更新或追加变量
-            if grep -q "^APP_VERSION=" .env 2>/dev/null; then
-              sed -i "s|^APP_VERSION=.*|APP_VERSION=$VERSION|" .env
-            else
-              echo "APP_VERSION=$VERSION" >> .env
-            fi
-            
-            if grep -q "^BUILD_DATE=" .env 2>/dev/null; then
-              sed -i "s|^BUILD_DATE=.*|BUILD_DATE=$BUILD_DATE|" .env
-            else
-              echo "BUILD_DATE=$BUILD_DATE" >> .env
-            fi
-            
-            if grep -q "^GIT_COMMIT=" .env 2>/dev/null; then
-              sed -i "s|^GIT_COMMIT=.*|GIT_COMMIT=$GIT_COMMIT|" .env
-            else
-              echo "GIT_COMMIT=$GIT_COMMIT" >> .env
-            fi
-            
-            echo "版本: $VERSION, 构建日期: $BUILD_DATE, 提交: $GIT_COMMIT"
-            
-            # 检查网络配置
-            echo "检查网络配置..."
+            echo "APP_VERSION=$VERSION" >> .env
+            echo "BUILD_DATE=$BUILD_DATE" >> .env
+            echo "GIT_COMMIT=$GIT_COMMIT" >> .env
+            echo "版本: VERSION,构建日期:BUILD_DATE, 提交: $GIT_COMMIT"
+
+            # 部署
+            echo "部署服务..."
+
+            # 停止并删除旧的前端容器（保留 API 和 MySQL）
+            docker stop projecthub-frontend 2>/dev/null || true
+            docker rm -f projecthub-frontend 2>/dev/null || true
+
+            # 构建前端镜像
+            echo "构建前端镜像..."
+            docker build \
+              --build-arg APP_VERSION=$VERSION \
+              --build-arg BUILD_DATE=$BUILD_DATE \
+              --build-arg GIT_COMMIT=$GIT_COMMIT \
+              -t projecthub-frontend:latest \
+              ./projecthub
+
+            # 使用现有网络（优先使用 projecthub_default）
             NETWORK_NAME="projecthub_default"
             if ! docker network inspect $NETWORK_NAME >/dev/null 2>&1; then
               NETWORK_NAME="projecthub-network"
@@ -194,57 +162,52 @@ jobs:
               fi
             fi
             echo "使用网络: $NETWORK_NAME"
-            
-            # 部署
-            echo "部署服务..."
-            
-            # 清理所有 projecthub 容器（除了 MySQL）
-            docker stop projecthub-frontend projecthub-api 2>/dev/null || true
-            docker rm -f projecthub-frontend projecthub-api 2>/dev/null || true
-            
-            # 使用 docker-compose 完整部署
-            docker-compose -f docker-compose.prod.yml up -d --build
-            
-            echo "等待容器启动..."
-            sleep 5
-            
-            # 获取容器 IP 并更新 Nginx 配置
-            echo "更新 Nginx 配置..."
-            
+
+            # 停止并删除旧的前端容器
+            echo "清理旧的前端容器..."
+            docker stop projecthub-frontend 2>/dev/null || true
+            docker rm projecthub-frontend 2>/dev/null || true
+
+            # 启动前端容器（不绑定到特定端口，只在容器网络内）
+            echo "启动前端容器..."
+            docker run -d \
+              --name projecthub-frontend \
+              --network $NETWORK_NAME \
+              --restart unless-stopped \
+              projecthub-frontend:latest
+
             # 获取前端容器 IP
+            sleep 2
             FRONTEND_IP=$(docker inspect projecthub-frontend --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "")
-            if [ -n "$FRONTEND_IP" ]; then
-              echo "前端容器 IP: $FRONTEND_IP"
-            else
-              echo "警告: 无法获取前端容器 IP"
-            fi
-            
+            echo "前端容器 IP: $FRONTEND_IP"
+
+            # 部署 API 容器
+            echo "部署 API 容器..."
+            docker stop projecthub-api 2>/dev/null || true
+            docker rm projecthub-api 2>/dev/null || true
+            docker run -d \
+              --name projecthub-api \
+              --network $NETWORK_NAME \
+              -e ConnectionStrings__DefaultConnection="Server=projecthub-mysql;Port=3306;Database=projecthub;User=root;Password=ProjectHub@2026!Secure#Pass" \
+              -e DeepSeek__ApiKey="" \
+              -p 8080:8080 \
+              --restart unless-stopped \
+              projecthub-api:latest
+
             # 获取 API 容器 IP
+            sleep 2
             API_IP=$(docker inspect projecthub-api --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "")
-            if [ -n "$API_IP" ]; then
-              echo "API 容器 IP: $API_IP"
-            else
-              echo "警告: 无法获取 API 容器 IP"
-            fi
-            
+            echo "API 容器 IP: $API_IP"
+
             # 更新 Nginx 配置
-            if [ -f /etc/nginx/sites-available/projecthub ] && [ -n "$FRONTEND_IP" ] && [ -n "$API_IP" ]; then
-              echo "更新 Nginx 反向代理配置..."
+            echo "更新 Nginx 配置..."
+            if [ -f /etc/nginx/sites-available/projecthub ]; then
               # 更新前端代理
               sudo sed -i "s|proxy_pass http://[^:]*:80;|proxy_pass http://$FRONTEND_IP:80;|g" /etc/nginx/sites-available/projecthub
               # 更新 API 代理
               sudo sed -i "s|proxy_pass http://[^:]*:8080;|proxy_pass http://$API_IP:8080;|g" /etc/nginx/sites-available/projecthub
-              
-              # 测试并重载 Nginx
-              if sudo nginx -t; then
-                sudo systemctl reload nginx
-                echo "Nginx 配置已更新并重载"
-              else
-                echo "警告: Nginx 配置测试失败，跳过重载"
-              fi
-            else
-              echo "跳过 Nginx 配置更新（配置文件不存在或无法获取容器 IP）"
+              sudo nginx -t && sudo systemctl reload nginx
             fi
-            
+
             echo "完成!"
-            docker-compose -f docker-compose.prod.yml ps
+            docker ps --filter "name=projecthub"
