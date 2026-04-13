@@ -93,7 +93,10 @@ jobs:
             
             # 克隆代码
             echo "克隆代码..."
-            rm -rf ~/projecthub/* 2>/dev/null || true
+            cd ~
+            rm -rf ~/projecthub
+            mkdir -p ~/projecthub
+            cd ~/projecthub
             git clone https://github.com/Dream-Black/user-manager.git .
             
             echo "文件列表:"
