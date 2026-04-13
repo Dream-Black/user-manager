@@ -129,30 +129,32 @@ jobs:
           script: |
             echo "===== 开始部署 ====="
             
-            # 创建目录
-            mkdir -p ~/projecthub
-            cd ~/projecthub
+            # 切换到项目目录
+            cd /opt/projecthub
             pwd
             
             # 更新代码（保留数据卷）
             echo "更新代码..."
-            if [ -d ~/projecthub/.git ]; then
-              cd ~/projecthub
+            if [ -d .git ]; then
               git fetch origin
               git reset --hard origin/main
             else
-              mkdir -p ~/projecthub
-              cd ~/projecthub
-              git clone https://github.com/Dream-Black/user-manager.git .
+              echo "错误: 不是有效的 Git 仓库"
+              exit 1
             fi
             
             echo "文件列表:"
             ls -la
             
-            # 创建 .env
-            echo "创建 .env..."
-            echo "MYSQL_ROOT_PASSWORD=chennan" > .env
-            echo "DEEPSEEK_API_KEY=" >> .env
+            # 创建 .env（如果不存在则创建）
+            echo "检查 .env 配置..."
+            if [ ! -f .env ]; then
+              echo "创建新的 .env 文件..."
+              echo "MYSQL_ROOT_PASSWORD=ProjectHub@2026!Secure#Pass" > .env
+              echo "DEEPSEEK_API_KEY=" >> .env
+            else
+              echo "保留现有的 .env 配置"
+            fi
             
             # 生成版本信息
             echo "生成版本信息..."
@@ -164,6 +166,18 @@ jobs:
             echo "GIT_COMMIT=$GIT_COMMIT" >> .env
             echo "版本: $VERSION, 构建日期: $BUILD_DATE, 提交: $GIT_COMMIT"
             
+            # 检查网络配置
+            echo "检查网络配置..."
+            NETWORK_NAME="projecthub_default"
+            if ! docker network inspect $NETWORK_NAME >/dev/null 2>&1; then
+              NETWORK_NAME="projecthub-network"
+              if ! docker network inspect $NETWORK_NAME >/dev/null 2>&1; then
+                echo "创建项目网络..."
+                NETWORK_NAME=$(docker network create projecthub-network)
+              fi
+            fi
+            echo "使用网络: $NETWORK_NAME"
+            
             # 部署
             echo "部署服务..."
             
@@ -173,6 +187,47 @@ jobs:
             
             # 使用 docker-compose 完整部署
             docker-compose -f docker-compose.prod.yml up -d --build
+            
+            echo "等待容器启动..."
+            sleep 5
+            
+            # 获取容器 IP 并更新 Nginx 配置
+            echo "更新 Nginx 配置..."
+            
+            # 获取前端容器 IP
+            FRONTEND_IP=$(docker inspect projecthub-frontend --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "")
+            if [ -n "$FRONTEND_IP" ]; then
+              echo "前端容器 IP: $FRONTEND_IP"
+            else
+              echo "警告: 无法获取前端容器 IP"
+            fi
+            
+            # 获取 API 容器 IP
+            API_IP=$(docker inspect projecthub-api --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "")
+            if [ -n "$API_IP" ]; then
+              echo "API 容器 IP: $API_IP"
+            else
+              echo "警告: 无法获取 API 容器 IP"
+            fi
+            
+            # 更新 Nginx 配置
+            if [ -f /etc/nginx/sites-available/projecthub ] && [ -n "$FRONTEND_IP" ] && [ -n "$API_IP" ]; then
+              echo "更新 Nginx 反向代理配置..."
+              # 更新前端代理
+              sudo sed -i "s|proxy_pass http://[^:]*:80;|proxy_pass http://$FRONTEND_IP:80;|g" /etc/nginx/sites-available/projecthub
+              # 更新 API 代理
+              sudo sed -i "s|proxy_pass http://[^:]*:8080;|proxy_pass http://$API_IP:8080;|g" /etc/nginx/sites-available/projecthub
+              
+              # 测试并重载 Nginx
+              if sudo nginx -t; then
+                sudo systemctl reload nginx
+                echo "Nginx 配置已更新并重载"
+              else
+                echo "警告: Nginx 配置测试失败，跳过重载"
+              fi
+            else
+              echo "跳过 Nginx 配置更新（配置文件不存在或无法获取容器 IP）"
+            fi
             
             echo "完成!"
             docker-compose -f docker-compose.prod.yml ps
