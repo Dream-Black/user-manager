@@ -106,8 +106,8 @@ jobs:
             
             # 部署
             echo "部署服务..."
-            docker compose -f docker-compose.prod.yml down 2>/dev/null || echo "无需停止"
-            docker compose -f docker-compose.prod.yml up -d --build
+            docker-compose -f docker-compose.prod.yml down 2>/dev/null || echo "无需停止"
+            docker-compose -f docker-compose.prod.yml up -d --build
             
             echo "完成!"
-            docker compose -f docker-compose.prod.yml ps
+            docker-compose -f docker-compose.prod.yml ps
