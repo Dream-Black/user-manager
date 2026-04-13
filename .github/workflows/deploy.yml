@@ -52,7 +52,9 @@ jobs:
         run: npm run build
 
       - name: 复制版本信息到构建目录
-        run: cp version.json projecthub/dist/
+        run: |
+          cp version.json projecthub/
+          cp version.json projecthub/dist/
 
       - name: 构建并打包 Docker 镜像
         run: |
