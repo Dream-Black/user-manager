@@ -144,12 +144,53 @@ jobs:
             
             # 部署
             echo "部署服务..."
-            # 强制清理所有相关容器和网络
-            docker-compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
-            docker stop $(docker ps -q --filter "name=projecthub") 2>/dev/null || true
-            docker rm -f $(docker ps -aq --filter "name=projecthub") 2>/dev/null || true
-            # 使用 docker-compose 重新部署
-            docker-compose -f docker-compose.prod.yml up -d --build
+            
+            # 停止并删除旧的前端容器（保留 API 和 MySQL）
+            docker stop projecthub-frontend 2>/dev/null || true
+            docker rm -f projecthub-frontend 2>/dev/null || true
+            
+            # 构建前端镜像
+            echo "构建前端镜像..."
+            docker build \
+              --build-arg APP_VERSION=$VERSION \
+              --build-arg BUILD_DATE=$BUILD_DATE \
+              --build-arg GIT_COMMIT=$GIT_COMMIT \
+              -t projecthub-frontend:latest \
+              ./projecthub
+            
+            # 获取项目网络名称
+            NETWORK_NAME=$(docker network ls --filter name=projecthub -q | head -1)
+            if [ -z "$NETWORK_NAME" ]; then
+              echo "创建项目网络..."
+              NETWORK_NAME=$(docker network create projecthub-network)
+            else
+              NETWORK_NAME=$(docker network inspect --format='{{.Name}}' $NETWORK_NAME)
+            fi
+            echo "使用网络: $NETWORK_NAME"
+            
+            # 启动前端容器
+            echo "启动前端容器..."
+            docker run -d \
+              --name projecthub-frontend \
+              --network $NETWORK_NAME \
+              --restart unless-stopped \
+              -p 127.0.0.1:8081:80 \
+              projecthub-frontend:latest
+            
+            # 获取前端容器 IP
+            sleep 2
+            FRONTEND_IP=$(docker inspect projecthub-frontend --format='{{.NetworkSettings.IPAddress}}' 2>/dev/null || echo "")
+            if [ -z "$FRONTEND_IP" ]; then
+              FRONTEND_IP=$(docker inspect projecthub-frontend --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "127.0.0.1")
+            fi
+            echo "前端容器 IP: $FRONTEND_IP"
+            
+            # 更新 Nginx 配置
+            echo "更新 Nginx 配置..."
+            if [ -f /etc/nginx/sites-available/projecthub ]; then
+              sudo sed -i "s|proxy_pass http://[^:]*:80;|proxy_pass http://$FRONTEND_IP:80;|g" /etc/nginx/sites-available/projecthub
+              sudo nginx -t && sudo systemctl reload nginx
+            fi
             
             echo "完成!"
-            docker-compose -f docker-compose.prod.yml ps
+            docker ps --filter "name=projecthub"
