@@ -10,8 +10,8 @@ RUN dotnet restore
 COPY . .
 RUN dotnet publish -c Release -o /app/publish --no-restore
 
-# ==================== 运行阶段（极简 Alpine 镜像）====================
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-alpine AS runtime
+# ==================== 运行阶段（标准镜像，避免 Alpine 兼容性问题）====================
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
 COPY --from=build /app/publish .

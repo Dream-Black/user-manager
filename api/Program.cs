@@ -7,7 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // 配置 MySQL 数据库
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Server=localhost;Port=3306;Database=projecthub;User=root;Password=chennan;";
+    ?? "Server=localhost;Port=3306;Database=projecthub;User=root;Password=ProjectHub@2026!Secure#Pass;";
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
 

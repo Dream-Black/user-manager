@@ -197,14 +197,13 @@ jobs:
             FRONTEND_IP=$(docker inspect projecthub-frontend --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "")
             echo "前端容器 IP: $FRONTEND_IP"
 
-            # 部署 API 容器
+            # 部署 API 容器（只在容器网络内运行，不绑定端口）
             echo "部署 API 容器..."
             docker run -d \
               --name projecthub-api \
               --network $NETWORK_NAME \
               -e ConnectionStrings__DefaultConnection="Server=projecthub-mysql;Port=3306;Database=projecthub;User=root;Password=ProjectHub@2026!Secure#Pass" \
               -e DeepSeek__ApiKey="" \
-              -p 8080:8080 \
               --restart unless-stopped \
               projecthub-api:latest
 
