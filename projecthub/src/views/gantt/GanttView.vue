@@ -25,7 +25,7 @@
       <t-empty title="暂无甘特图数据" description="请先创建项目或添加任务" />
     </div>
 
-    <div v-else class="gantt-container">
+    <div v-else class="gantt-container" ref="ganttContainer">
       <!-- 时间轴头部 -->
       <div class="timeline-header">
         <div class="task-name-header">任务名称</div>
@@ -83,17 +83,36 @@
               <span class="task-name">{{ task.name }}</span>
             </div>
             <div class="task-bar-wrapper" :style="{ '--day-width': dayWidth + 'px' }">
+              <!-- 拖拽手柄 - 左侧 -->
+              <div
+                class="resize-handle resize-handle-left"
+                @mousedown.stop="startResize($event, project, task, 'left')"
+              ></div>
+
+              <!-- 任务条主体 - 可拖拽移动 -->
               <div
                 class="task-bar"
-                :class="{ completed: task.status === 'completed' }"
-                :style="{
-                  left: getLeftPosition(task.startDate) + 'px',
-                  width: getWidth(task.startDate, task.endDate) + 'px',
-                  background: task.status === 'completed' ? '#10B981' : project.color
+                :class="{
+                  completed: task.status === 'completed',
+                  dragging: draggingTask?.id === task.id && dragType === 'move',
+                  'resizing': draggingTask?.id === task.id && (dragType === 'left' || dragType === 'right')
                 }"
+                :style="{
+                  left: (tempTaskPositions[task.id]?.left ?? getLeftPosition(task.startDate)) + 'px',
+                  width: (tempTaskPositions[task.id]?.width ?? getWidth(task.startDate, task.endDate)) + 'px',
+                  background: task.status === 'completed' ? '#10B981' : project.color,
+                  cursor: draggingTask?.id === task.id ? 'grabbing' : 'grab'
+                }"
+                @mousedown.stop="startDrag($event, project, task)"
               >
                 <span class="bar-label">{{ task.name }}</span>
               </div>
+
+              <!-- 拖拽手柄 - 右侧 -->
+              <div
+                class="resize-handle resize-handle-right"
+                @mousedown.stop="startResize($event, project, task, 'right')"
+              ></div>
             </div>
           </div>
         </div>
@@ -102,13 +121,22 @@
       <!-- 今日线 -->
       <div class="today-line" :style="{ left: todayPosition + 'px' }"></div>
     </div>
+
+    <!-- 保存提示 -->
+    <transition name="fade">
+      <div v-if="saveStatus" class="save-indicator" :class="saveStatus">
+        <t-loading v-if="saveStatus === 'saving'" size="small" text="保存中..." />
+        <t-icon v-else-if="saveStatus === 'saved'" name="check-circle-filled" style="color: #10B981;" />
+        <t-icon v-else-if="saveStatus === 'error'" name="error-circle-filled" style="color: #EF4444;" />
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
 import dayjs from 'dayjs'
-import { ganttService } from '@/services/dataService'
+import { ganttService, taskService } from '@/services/dataService'
 import { AddIcon } from 'tdesign-icons-vue-next'
 
 const dayWidth = ref(40)
@@ -117,20 +145,228 @@ const ganttData = ref([])
 const dateRangeStart = ref(dayjs().subtract(7, 'day'))
 const dateRangeEnd = ref(dayjs().add(30, 'day'))
 
+// 拖拽相关状态
+const ganttContainer = ref(null)
+const draggingTask = ref(null) // { id, projectId, startDate, endDate }
+const dragType = ref(null) // 'move' | 'left' | 'right'
+const dragStartX = ref(0)
+const dragOriginalLeft = ref(0)
+const dragOriginalWidth = ref(0)
+const tempTaskPositions = reactive({}) // 临时位置，用于实时预览
+
+// 保存状态
+const saveStatus = ref(null) // null | 'saving' | 'saved' | 'error'
+
+// 防抖定时器
+let debounceTimer = null
+
 const zoomIn = () => { dayWidth.value = Math.min(80, dayWidth.value + 10) }
 const zoomOut = () => { dayWidth.value = Math.max(20, dayWidth.value - 10) }
 
 const today = dayjs()
+
+// ============ 拖拽逻辑 ============
+
+// 获取时间轴起点（用于计算位置）
+const getTimelineStart = () => {
+  return dateRangeStart.value
+}
+
+// 根据像素位置计算日期
+const pixelToDate = (pixelX) => {
+  const timelineStart = getTimelineStart()
+  const relativeX = pixelX - 200 // 200 是任务名称列宽度
+  const days = Math.round(relativeX / dayWidth.value)
+  return timelineStart.add(days, 'day').format('YYYY-MM-DD')
+}
+
+// 根据日期计算像素位置
+const dateToPixel = (date) => {
+  const timelineStart = getTimelineStart()
+  const days = dayjs(date).diff(timelineStart, 'day')
+  return 200 + days * dayWidth.value
+}
+
+// 开始拖拽移动
+const startDrag = (event, project, task) => {
+  if (task.status === 'completed') return // 已完成任务不可拖拽
+
+  event.preventDefault()
+  draggingTask.value = { ...task, projectId: project.id }
+  dragType.value = 'move'
+  dragStartX.value = event.clientX
+  dragOriginalLeft.value = getLeftPosition(task.startDate)
+  dragOriginalWidth.value = getWidth(task.startDate, task.endDate)
+
+  // 初始化临时位置
+  tempTaskPositions[task.id] = {
+    left: dragOriginalLeft.value,
+    width: dragOriginalWidth.value
+  }
+
+  document.addEventListener('mousemove', onDragMove)
+  document.addEventListener('mouseup', onDragEnd)
+}
+
+// 开始调整大小
+const startResize = (event, project, task, direction) => {
+  if (task.status === 'completed') return
+
+  event.preventDefault()
+  event.stopPropagation()
+  draggingTask.value = { ...task, projectId: project.id }
+  dragType.value = direction
+  dragStartX.value = event.clientX
+  dragOriginalLeft.value = getLeftPosition(task.startDate)
+  dragOriginalWidth.value = getWidth(task.startDate, task.endDate)
+
+  // 初始化临时位置
+  tempTaskPositions[task.id] = {
+    left: dragOriginalLeft.value,
+    width: dragOriginalWidth.value
+  }
+
+  document.addEventListener('mousemove', onDragMove)
+  document.addEventListener('mouseup', onDragEnd)
+}
+
+// 拖拽移动中
+const onDragMove = (event) => {
+  if (!draggingTask.value) return
+
+  const task = draggingTask.value
+  const deltaX = event.clientX - dragStartX.value
+
+  if (dragType.value === 'move') {
+    // 移动模式：左右平移
+    tempTaskPositions[task.id] = {
+      left: dragOriginalLeft.value + deltaX,
+      width: dragOriginalWidth.value
+    }
+  } else if (dragType.value === 'left') {
+    // 左侧调整：改变左边距和宽度
+    const newLeft = Math.max(0, dragOriginalLeft.value + deltaX)
+    const newWidth = dragOriginalWidth.value + (dragOriginalLeft.value - newLeft)
+    if (newWidth >= dayWidth.value) { // 最小宽度为1天
+      tempTaskPositions[task.id] = {
+        left: newLeft,
+        width: newWidth
+      }
+    }
+  } else if (dragType.value === 'right') {
+    // 右侧调整：只改变宽度
+    const newWidth = Math.max(dayWidth.value, dragOriginalWidth.value + deltaX)
+    tempTaskPositions[task.id] = {
+      left: dragOriginalLeft.value,
+      width: newWidth
+    }
+  }
+}
+
+// 拖拽结束
+const onDragEnd = () => {
+  if (!draggingTask.value) return
+
+  const task = draggingTask.value
+  const newPosition = tempTaskPositions[task.id]
+
+  if (newPosition) {
+    const originalStart = task.startDate
+    const originalEnd = task.endDate
+
+    // 计算新的开始和结束日期
+    const newStartDate = pixelToDate(newPosition.left)
+    const newEndDate = pixelToDate(newPosition.left + newPosition.width - 1)
+
+    // 只有日期发生变化才调用API
+    if (newStartDate !== originalStart || newEndDate !== originalEnd) {
+      updateTaskDates(task.id, newStartDate, newEndDate)
+    }
+  }
+
+  // 清理状态
+  draggingTask.value = null
+  dragType.value = null
+  delete tempTaskPositions[task.id]
+
+  document.removeEventListener('mousemove', onDragMove)
+  document.removeEventListener('mouseup', onDragEnd)
+}
+
+// 防抖保存任务日期
+const updateTaskDates = (taskId, startDate, endDate) => {
+  // 先立即更新本地UI
+  updateLocalTask(taskId, startDate, endDate)
+
+  // 防抖调用API
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+  }
+
+  saveStatus.value = 'saving'
+
+  debounceTimer = setTimeout(async () => {
+    try {
+      await taskService.update(taskId, {
+        planStartDate: startDate,
+        planEndDate: endDate
+      })
+      saveStatus.value = 'saved'
+      setTimeout(() => { saveStatus.value = null }, 2000)
+    } catch (error) {
+      console.error('更新任务时间失败:', error)
+      saveStatus.value = 'error'
+      setTimeout(() => { saveStatus.value = null }, 3000)
+      // 回滚本地更改
+      loadGanttData()
+    }
+  }, 500) // 500ms 防抖
+}
+
+// 更新本地任务数据
+const updateLocalTask = (taskId, startDate, endDate) => {
+  ganttData.value.forEach(project => {
+    const task = project.tasks.find(t => t.id === taskId)
+    if (task) {
+      task.startDate = startDate
+      task.endDate = endDate
+    }
+    // 同时更新项目的开始结束日期
+    updateProjectDates(project)
+  })
+}
+
+// 更新项目的开始结束日期
+const updateProjectDates = (project) => {
+  if (project.tasks.length === 0) return
+
+  let minStart = project.tasks[0].startDate
+  let maxEnd = project.tasks[0].endDate
+
+  project.tasks.forEach(task => {
+    if (dayjs(task.startDate).isBefore(minStart)) {
+      minStart = task.startDate
+    }
+    if (dayjs(task.endDate).isAfter(maxEnd)) {
+      maxEnd = task.endDate
+    }
+  })
+
+  project.startDate = minStart
+  project.endDate = maxEnd
+}
+
+// ============ 数据加载 ============
 
 // 加载甘特图数据
 const loadGanttData = async () => {
   try {
     loading.value = true
     const response = await ganttService.getData({ days: 60 })
-    
+
     // 将扁平的任务列表转换为按项目分组的嵌套结构
     const projectMap = new Map()
-    
+
     response.items.forEach(task => {
       if (!projectMap.has(task.projectId)) {
         projectMap.set(task.projectId, {
@@ -143,7 +379,7 @@ const loadGanttData = async () => {
           tasks: []
         })
       }
-      
+
       const project = projectMap.get(task.projectId)
       project.tasks.push({
         id: task.id,
@@ -153,7 +389,7 @@ const loadGanttData = async () => {
         status: task.status,
         progress: task.progress || 0
       })
-      
+
       // 更新项目的开始/结束日期和进度
       if (task.startDate && (!project.startDate || dayjs(task.startDate).isBefore(project.startDate))) {
         project.startDate = task.startDate
@@ -162,7 +398,7 @@ const loadGanttData = async () => {
         project.endDate = task.endDate
       }
     })
-    
+
     // 计算每个项目的总进度
     projectMap.forEach(project => {
       if (project.tasks.length > 0) {
@@ -170,7 +406,7 @@ const loadGanttData = async () => {
         project.progress = Math.round(totalProgress / project.tasks.length)
       }
     })
-    
+
     ganttData.value = Array.from(projectMap.values())
     dateRangeStart.value = dayjs(response.startDate)
     dateRangeEnd.value = dayjs(response.endDate)
@@ -184,6 +420,16 @@ const loadGanttData = async () => {
 onMounted(() => {
   loadGanttData()
 })
+
+onUnmounted(() => {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+  }
+  document.removeEventListener('mousemove', onDragMove)
+  document.removeEventListener('mouseup', onDragEnd)
+})
+
+// ============ 工具函数 ============
 
 const dateRange = computed(() => {
   const days = []
@@ -245,7 +491,7 @@ const formatMonth = (date) => dayjs(date).format('MMM')
 .gantt-content { min-height: 400px; }
 .project-row { border-bottom: 1px solid var(--border-color); }
 .project-header { display: flex; height: 56px; background: var(--bg-page); }
-.task-row { display: flex; height: 44px; border-top: 1px solid var(--border-light); animation: fadeIn 0.4s ease backwards; }
+.task-row { display: flex; height: 44px; border-top: 1px solid var(--border-light); animation: fadeIn 0.4s ease backwards; position: relative; }
 .task-row:hover { background: var(--bg-hover); }
 
 .task-name-cell { width: 200px; flex-shrink: 0; padding: 0 16px; display: flex; align-items: center; gap: 8px; border-right: 1px solid var(--border-color); }
@@ -255,11 +501,96 @@ const formatMonth = (date) => dayjs(date).format('MMM')
 .task-name { font-size: 13px; color: var(--text-secondary); }
 
 .task-bar-wrapper { flex: 1; position: relative; padding: 8px 0; }
-.task-bar { position: absolute; height: 28px; border-radius: var(--radius-md); display: flex; align-items: center; padding: 0 8px; min-width: 40px; transition: all var(--transition-fast); }
-.task-bar:hover { transform: scaleY(1.1); box-shadow: var(--shadow-md); }
+
+/* 任务条基础样式 */
+.task-bar {
+  position: absolute;
+  height: 28px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  min-width: 40px;
+  transition: box-shadow 0.2s ease;
+  user-select: none;
+}
+
+.task-bar:hover {
+  box-shadow: var(--shadow-md);
+  z-index: 5;
+}
+
+/* 拖拽状态样式 */
+.task-bar.dragging,
+.task-bar.resizing {
+  opacity: 0.9;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  transform: scale(1.02);
+}
+
+/* 拖拽手柄 */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.resize-handle-left {
+  left: 0;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: linear-gradient(to right, rgba(255,255,255,0.3), transparent);
+}
+
+.resize-handle-right {
+  right: 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: linear-gradient(to left, rgba(255,255,255,0.3), transparent);
+}
+
+.task-row:hover .resize-handle {
+  opacity: 1;
+}
+
+.resize-handle:hover {
+  background: rgba(255,255,255,0.5) !important;
+}
+
 .project-bar { height: 32px; opacity: 0.8; }
 .bar-label { font-size: 11px; font-weight: 600; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: #EF4444; z-index: 10; pointer-events: none; }
 .today-line::before { content: '今天'; position: absolute; top: 0; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 600; color: #EF4444; background: var(--bg-container); padding: 2px 4px; border-radius: 4px; }
+
+/* 保存状态提示 */
+.save-indicator {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--bg-container);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
 </style>
