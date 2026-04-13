@@ -8,7 +8,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/projecthub
+  # GHCR 要求镜像名全小写，github.repository_owner 需转换
+  IMAGE_PREFIX: ${{ toLowerCase(github.repository_owner) }}/projecthub
 
 jobs:
   # ══════════════════════════════════════════
@@ -129,7 +130,7 @@ jobs:
             # 拉取最新代码（docker-compose.yml 等配置同步）
             git pull origin main || git pull origin master
 
-            # 登录 GHCR 拉取最新镜像
+            # 登录 GHCR 拉取最新镜像（github.actor 本身是小写）
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # 更新并重启服务（滚动更新，数据库不受影响）
