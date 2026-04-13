@@ -69,6 +69,15 @@ jobs:
           path: frontend.tar.gz
           retention-days: 1
 
+      - name: 上传版本文件
+        uses: actions/upload-artifact@v4
+        with:
+          name: version-file
+          path: |
+            VERSION
+            version.json
+          retention-days: 1
+
   deploy:
     name: "部署到生产服务器"
     needs: [ build ]
@@ -96,6 +105,19 @@ jobs:
             echo "Docker Compose: $(docker compose version 2>/dev/null || docker-compose --version 2>/dev/null || echo '未安装')"
             df -h / | head -2
             
+      - name: 下载版本文件
+        uses: actions/download-artifact@v4
+        with:
+          name: version-file
+          path: ./
+
+      - name: 读取版本号
+        id: version
+        run: |
+          VERSION=$(cat VERSION)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "部署版本: $VERSION"
+
       - name: 部署到腾讯云
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -134,7 +156,7 @@ jobs:
             
             # 生成版本信息
             echo "生成版本信息..."
-            VERSION=$(cat VERSION 2>/dev/null || echo "1.0.0")
+            VERSION="${{ steps.version.outputs.version }}"
             BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
             GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
             echo "APP_VERSION=$VERSION" >> .env
