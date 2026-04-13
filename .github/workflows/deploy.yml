@@ -91,18 +91,26 @@ jobs:
             .env.example
           sparse-checkout-cone-mode: false
 
-      - name: 克隆最新代码到服务器
+      - name: 下载最新代码并传输到服务器
+        run: |
+          # 通过 GitHub API 下载最新代码 zip
+          curl -L "https://github.com/Dream-Black/user-manager/archive/refs/heads/main.zip" -o /tmp/repo.zip
+          echo "下载完成，大小: $(du -sh /tmp/repo.zip | cut -f1)"
+
+      - name: 传输代码到服务器
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 5m
+          command_timeout: 2m
           script: |
             set -e
-            git clone https://github.com/Dream-Black/user-manager.git /tmp/projecthub-latest || true
+            mkdir -p /tmp/projecthub-latest
+            unzip -o /tmp/repo.zip -d /tmp/
+            cp -rf /tmp/user-manager-main/* /tmp/projecthub-latest/
             cp /tmp/projecthub-latest/docker-compose.prod.yml /opt/projecthub/
-            echo "=== 代码已同步 ==="
+            echo "=== 代码已同步到服务器 ==="
 
       - name: 构建并发布后端
         uses: appleboy/ssh-action@v1.0.3
