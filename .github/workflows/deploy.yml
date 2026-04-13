@@ -11,28 +11,7 @@ env:
 
 jobs:
   # ══════════════════════════════════════════
-  # JOB 1: 后端测试 & 构建
-  # ══════════════════════════════════════════
-  build-api:
-    name: "后端 - 发布"
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 设置 .NET 9
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "9.0.x"
-
-      - name: 还原并发布
-        run: |
-          dotnet restore api/ProjectHub.Api.csproj
-          dotnet publish api/ProjectHub.Api.csproj -c Release -o ./publish/api --no-restore
-
-  # ══════════════════════════════════════════
-  # JOB 2: 前端构建 & 推送镜像
+  # JOB 1: 前端构建 & 推送镜像（仅需要这个）
   # ══════════════════════════════════════════
   build-frontend:
     name: "前端 - 构建 & 推送镜像"
@@ -71,47 +50,23 @@ jobs:
           docker push --all-tags "$REGISTRY/dream-black/projecthub-frontend"
 
   # ══════════════════════════════════════════
-  # JOB 3: 部署到腾讯云服务器
+  # JOB 2: 部署到腾讯云（服务器能访问 GHCR）
   # ══════════════════════════════════════════
   deploy:
     name: "部署到生产服务器"
-    needs: [ build-api, build-frontend ]
+    needs: [ build-frontend ]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
-    permissions:
-      packages: write
-      contents: read
 
     steps:
-      - name: 检出配置
+      - name: 检出配置（取 docker-compose.prod.yml）
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
             docker-compose.prod.yml
-            .env.example
           sparse-checkout-cone-mode: false
 
-      - name: 下载代码到服务器
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 3m
-          script: |
-            set -e
-            rm -rf /tmp/projecthub-latest /tmp/repo.zip
-            echo "下载代码包..."
-            wget -q "https://github.com/Dream-Black/user-manager/archive/refs/heads/main.zip" -O /tmp/repo.zip
-            echo "下载完成: $(du -sh /tmp/repo.zip | cut -f1)"
-            unzip -q /tmp/repo.zip -d /tmp/
-            mkdir -p /tmp/projecthub-latest
-            cp -rf /tmp/user-manager-main/* /tmp/projecthub-latest/
-            cp /tmp/projecthub-latest/docker-compose.prod.yml /opt/projecthub/
-            rm -rf /tmp/repo.zip /tmp/user-manager-main
-            echo "=== 代码已同步 ==="
-
-      - name: 构建并发布后端
+      - name: 传输配置并重启前端容器
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -120,57 +75,16 @@ jobs:
           command_timeout: 10m
           script: |
             set -e
-            if which dotnet 2>/dev/null; then
-              echo "dotnet 已安装: $(which dotnet)"
-            else
-              echo "安装 dotnet..."
-              wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
-              chmod +x /tmp/dotnet-install.sh
-              /tmp/dotnet-install.sh --channel 9.0 --install-dir /opt/dotnet
-              ln -sf /opt/dotnet/dotnet /usr/local/bin/dotnet
-              echo "dotnet 安装完成"
-            fi
-            dotnet restore /tmp/projecthub-latest/api/ProjectHub.Api.csproj
-            dotnet publish /tmp/projecthub-latest/api/ProjectHub.Api.csproj -c Release -o /opt/projecthub/api-publish --no-restore
-            echo "=== 后端构建完成 ==="
 
-      - name: 拉取并启动前端容器
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 5m
-          envs: GITHUB_TOKEN,GH_ACTOR
-          script: |
-            set -e
+            # 更新配置
+            cp docker-compose.prod.yml /opt/projecthub/
+
+            # 登录 GHCR（从 runner 传入 token）
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # 拉取并重启前端
             docker compose -f /opt/projecthub/docker-compose.prod.yml pull frontend
             docker compose -f /opt/projecthub/docker-compose.prod.yml up -d frontend
-            echo "=== 前端启动完成 ==="
 
-      - name: 启动后端服务
-        uses: appleboy/ssh-action@v1.0.3
-        env:
-          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 1m
-          script: |
-            set -e
-            pkill -f "dotnet.*ProjectHub.Api" || true
-            sleep 2
-            cd /opt/projecthub/api-publish
-            export MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-chennan}"
-            export ConnectionStrings__DefaultConnection="Server=mysql;Port=3306;Database=projecthub;User=root;Password=${MYSQL_ROOT_PASSWORD}"
-            nohup dotnet ProjectHub.Api.dll --urls http://+:5000 > /opt/projecthub/api.log 2>&1 &
-            sleep 5
-            if curl -sf http://localhost:5000/swagger/index.html; then
-              echo "=== 部署成功! ==="
-            else
-              echo "后端启动失败，日志:"
-              cat /opt/projecthub/api.log
-              exit 1
-            fi
+            echo "=== 前端部署成功! ==="
+            docker compose -f /opt/projecthub/docker-compose.prod.yml ps
