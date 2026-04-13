@@ -135,7 +135,7 @@ jobs:
             # 生成版本信息
             echo "生成版本信息..."
             VERSION=$(cat VERSION 2>/dev/null || echo "1.0.0")
-            BUILD_DATE=$(date +%Y-%m-%d)
+            BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
             GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
             echo "APP_VERSION=$VERSION" >> .env
             echo "BUILD_DATE=$BUILD_DATE" >> .env
