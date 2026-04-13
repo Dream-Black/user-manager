@@ -68,38 +68,61 @@ jobs:
           debug: true
           script: |
             set -e
-            echo "===== 诊断 ====="
+            echo "===== 系统诊断 ====="
             echo "主机: $(hostname)"
-            echo "Docker: $(docker --version)"
-            echo "磁盘空间: $(df -h / | tail -1)"
-            echo "===== 开始部署 ====="
+            echo "当前目录: $(pwd)"
+            echo "当前用户: $(whoami)"
+            echo "Docker 版本: $(docker --version 2>/dev/null || echo 'Docker 未安装')"
+            echo "Docker Compose 版本: $(docker compose version 2>/dev/null || echo 'Docker Compose 未安装')"
+            echo "磁盘空间:"
+            df -h /
+            echo ""
+            echo "===== 准备部署目录 ====="
             
-            # 进入项目目录
-            cd /opt/projecthub || mkdir -p /opt/projecthub && cd /opt/projecthub
+            # 创建并进入项目目录
+            sudo mkdir -p /opt/projecthub
+            cd /opt/projecthub
             
-            # 如果目录为空，克隆代码
+            # 如果目录为空或没有 .git，使用 HTTPS 克隆
             if [ ! -d .git ]; then
-              git clone git@github.com:Dream-Black/user-manager.git .
+              echo "目录为空，克隆代码..."
+              sudo rm -rf /opt/projecthub/* /opt/projecthub/.* 2>/dev/null || true
+              git clone https://github.com/Dream-Black/user-manager.git /opt/projecthub
             else
-              git pull origin main
+              echo "更新代码..."
+              git fetch origin
+              git reset --hard origin/main
             fi
+            
+            echo ""
+            echo "===== 检查文件 ====="
+            ls -la /opt/projecthub/
+            echo ""
             
             # 确保 .env 文件存在
             if [ ! -f .env ]; then
+              echo "创建 .env 文件..."
               echo "MYSQL_ROOT_PASSWORD=chennan" > .env
               echo "DEEPSEEK_API_KEY=" >> .env
+              cat .env
             fi
             
-            # 使用 docker-compose.prod.yml 部署
-            echo "停止旧容器..."
-            docker compose -f docker-compose.prod.yml down 2>/dev/null || true
+            echo ""
+            echo "===== 停止旧容器 ====="
+            docker compose -f docker-compose.prod.yml down 2>/dev/null || echo "没有运行中的容器"
             
-            echo "启动服务..."
-            docker compose -f docker-compose.prod.yml up -d
+            echo ""
+            echo "===== 启动服务 ====="
+            docker compose -f docker-compose.prod.yml up -d --build
             
-            echo "等待服务启动..."
-            sleep 10
+            echo ""
+            echo "===== 等待服务启动 ====="
+            sleep 15
             
-            echo "===== 部署完成 ====="
+            echo ""
+            echo "===== 部署完成 - 容器状态 ====="
             docker compose -f docker-compose.prod.yml ps
-            docker compose -f docker-compose.prod.yml logs --tail=20
+            
+            echo ""
+            echo "===== 服务日志 ====="
+            docker compose -f docker-compose.prod.yml logs --tail=30
