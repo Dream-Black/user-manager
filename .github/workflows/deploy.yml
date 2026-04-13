@@ -132,6 +132,16 @@ jobs:
             echo "MYSQL_ROOT_PASSWORD=chennan" > .env
             echo "DEEPSEEK_API_KEY=" >> .env
             
+            # 生成版本信息
+            echo "生成版本信息..."
+            VERSION=$(cat VERSION 2>/dev/null || echo "1.0.0")
+            BUILD_DATE=$(date +%Y-%m-%d)
+            GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+            echo "APP_VERSION=$VERSION" >> .env
+            echo "BUILD_DATE=$BUILD_DATE" >> .env
+            echo "GIT_COMMIT=$GIT_COMMIT" >> .env
+            echo "版本: $VERSION, 构建日期: $BUILD_DATE, 提交: $GIT_COMMIT"
+            
             # 部署
             echo "部署服务..."
             # 强制清理所有相关容器和网络
