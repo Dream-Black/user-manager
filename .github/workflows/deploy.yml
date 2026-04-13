@@ -96,27 +96,35 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 15m
+          envs: ACTIONS_RUNTIME_TOKEN,ACTIONS_RUNTIME_URL
           script: |
             set -e
+            echo "=== 诊断信息 ==="
+            echo "Docker版本: $(docker --version 2>&1 || echo 'docker not found')"
+            echo "磁盘空间:"
+            df -h / | tail -1
+            ls -lh frontend.tar.gz 2>/dev/null || echo "frontend.tar.gz 不存在!"
+
             echo "=== 1/5: 更新配置 ==="
             cp docker-compose.prod.yml /opt/projecthub/
 
-            echo "=== 2/5: 接收前端镜像 ==="
-            # 通过 SSH 管道接收 runner 传来的镜像 tar
-            cat frontend.tar.gz | gunzip | docker load
-            echo "镜像加载完成"
+            echo "=== 2/5: 加载镜像 ==="
+            if [ -f frontend.tar.gz ]; then
+              echo "文件大小: $(ls -lh frontend.tar.gz | awk '{print $5}')"
+              zcat frontend.tar.gz | docker load
+              echo "镜像加载完成"
+            else
+              echo "ERROR: frontend.tar.gz 不存在!"
+              exit 1
+            fi
 
-            echo "=== 3/5: 标记镜像为 latest ==="
+            echo "=== 3/5: 标记镜像 ==="
             docker tag frontend:latest projecthub-frontend:latest
 
-            echo "=== 4/5: 重启前端容器 ==="
-            docker stop projecthub-frontend || true
-            docker rm projecthub-frontend || true
-            docker run -d \
-              --name projecthub-frontend \
-              --restart unless-stopped \
-              -p 80:80 \
-              projecthub-frontend:latest
+            echo "=== 4/5: 重启容器 ==="
+            docker stop projecthub-frontend 2>/dev/null || true
+            docker rm projecthub-frontend 2>/dev/null || true
+            docker run -d --name projecthub-frontend --restart unless-stopped -p 80:80 projecthub-frontend:latest
 
             echo "=== 5/5: 验证 ==="
             sleep 3
