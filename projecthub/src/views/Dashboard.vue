@@ -194,95 +194,234 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { projectService } from '@/services/dataService'
+import { taskService } from '@/services/dataService'
+import dayjs from 'dayjs'
 
-const userName = '张三'
-
+const userName = '用户'
+const loading = ref(false)
 const selectedPeriod = ref('周')
+
+// 项目颜色映射
+const projectColors = [
+  'linear-gradient(135deg, #3B82F6, #60A5FA)',
+  'linear-gradient(135deg, #10B981, #34D399)',
+  'linear-gradient(135deg, #F59E0B, #FBBF24)',
+  'linear-gradient(135deg, #6366F1, #818CF8)',
+  'linear-gradient(135deg, #EC4899, #F472B6)',
+  'linear-gradient(135deg, #8B5CF6, #A78BFA)'
+]
 
 const stats = ref([
   { 
     label: '总项目数', 
-    value: '12', 
+    value: '0', 
     icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     color: 'primary',
-    trend: 12
+    trend: 0
   },
   { 
     label: '进行中任务', 
-    value: '28', 
+    value: '0', 
     icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     color: 'success',
-    trend: 8
+    trend: 0
   },
   { 
-    label: '团队成员', 
-    value: '8', 
-    icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    label: '已完成任务', 
+    value: '0', 
+    icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 4L12 14.01l-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     color: 'warning',
     trend: 0
   },
   { 
-    label: '本周完成', 
-    value: '45', 
-    icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 4L12 14.01l-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    label: '本周新增', 
+    value: '0', 
+    icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     color: 'info',
-    trend: 23
+    trend: 0
   }
 ])
 
 const chartData = ref([
-  { label: '周一', value: 65 },
-  { label: '周二', value: 80 },
-  { label: '周三', value: 45 },
-  { label: '周四', value: 90 },
-  { label: '周五', value: 75 },
-  { label: '周六', value: 55 },
-  { label: '周日', value: 40 }
+  { label: '周一', value: 0 },
+  { label: '周二', value: 0 },
+  { label: '周三', value: 0 },
+  { label: '周四', value: 0 },
+  { label: '周五', value: 0 },
+  { label: '周六', value: 0 },
+  { label: '周日', value: 0 }
 ])
 
 const taskDistribution = ref({
-  completed: 65,
-  completedPercent: 65,
-  inProgress: 25,
-  inProgressPercent: 25,
-  pending: 10,
-  pendingPercent: 10,
-  total: 48
+  completed: 0,
+  completedPercent: 0,
+  inProgress: 0,
+  inProgressPercent: 0,
+  pending: 0,
+  pendingPercent: 0,
+  total: 0
 })
 
-const recentTasks = ref([
-  { id: 1, title: '完成用户调研报告', project: '产品优化', due: '今天', priority: 'high', priorityText: '高', completed: false },
-  { id: 2, title: '更新API文档', project: '技术文档', due: '明天', priority: 'medium', priorityText: '中', completed: false },
-  { id: 3, title: '审核设计稿', project: '界面改版', due: '3天后', priority: 'low', priorityText: '低', completed: true },
-  { id: 4, title: '提交周报', project: '日常工作', due: '周五', priority: 'medium', priorityText: '中', completed: false },
-  { id: 5, title: '代码评审', project: '功能开发', due: '已过期', priority: 'high', priorityText: '高', completed: false }
-])
+const recentTasks = ref([])
 
-const recentProjects = ref([
-  { id: 1, name: 'AI助手', description: '智能对话系统', progress: 75, color: 'linear-gradient(135deg, #3B82F6, #60A5FA)' },
-  { id: 2, name: '数据分析', description: '用户行为分析', progress: 60, color: 'linear-gradient(135deg, #10B981, #34D399)' },
-  { id: 3, name: '移动端', description: 'APP开发项目', progress: 45, color: 'linear-gradient(135deg, #F59E0B, #FBBF24)' },
-  { id: 4, name: '官网改版', description: '企业官网升级', progress: 90, color: 'linear-gradient(135deg, #6366F1, #818CF8)' }
-])
+const recentProjects = ref([])
 
 const quickActions = ref([
   { label: '创建任务', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/tasks/new' },
-  { label: '发起会议', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M15 10l4.553-2.276A1 1 0 0121 8.723v6.554a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/calendar' },
+  { label: '项目列表', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/projects' },
   { label: 'AI对话', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/ai' },
   { label: '导出报告', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/reports' },
-  { label: '团队管理', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/team' },
-  { label: '消息通知', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M18 8A6 6 0 106 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/notifications' }
+  { label: '任务中心', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/tasks' },
+  { label: '设置', icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', path: '/settings' }
 ])
 
+// 加载数据
+const loadDashboardData = async () => {
+  loading.value = true
+  try {
+    // 并行获取项目和任务数据
+    const [projects, tasks] = await Promise.all([
+      projectService.getAll(),
+      taskService.getAll()
+    ])
+
+    // 更新统计卡片
+    const totalProjects = projects.length || 0
+    const totalTasks = tasks.length || 0
+    const completedTasks = tasks.filter(t => t.status === 'completed').length || 0
+    const inProgressTasks = tasks.filter(t => t.status === 'in_progress').length || 0
+    const pendingTasks = tasks.filter(t => t.status === 'todo').length || 0
+
+    // 本周新增项目
+    const weekStart = dayjs().startOf('week')
+    const weekProjects = projects.filter(p => dayjs(p.createdAt).isAfter(weekStart)).length || 0
+
+    stats.value = [
+      { 
+        label: '总项目数', 
+        value: totalProjects.toString(), 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        color: 'primary',
+        trend: weekProjects
+      },
+      { 
+        label: '进行中任务', 
+        value: inProgressTasks.toString(), 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        color: 'success',
+        trend: 0
+      },
+      { 
+        label: '已完成任务', 
+        value: completedTasks.toString(), 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 4L12 14.01l-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        color: 'warning',
+        trend: 0
+      },
+      { 
+        label: '本周新增', 
+        value: weekProjects.toString(), 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        color: 'info',
+        trend: 0
+      }
+    ]
+
+    // 更新任务分布
+    const total = totalTasks || 1
+    taskDistribution.value = {
+      completed: Math.round((completedTasks / total) * 100),
+      completedPercent: Math.round((completedTasks / total) * 100),
+      inProgress: Math.round((inProgressTasks / total) * 100),
+      inProgressPercent: Math.round((inProgressTasks / total) * 100),
+      pending: Math.round((pendingTasks / total) * 100),
+      pendingPercent: Math.round((pendingTasks / total) * 100),
+      total: totalTasks
+    }
+
+    // 更新近期任务（最多5个）
+    recentTasks.value = tasks.slice(0, 5).map(t => ({
+      id: t.id,
+      title: t.title,
+      project: t.projectName || '未分配',
+      due: formatDueDate(t.dueDate),
+      priority: t.priority || 'medium',
+      priorityText: getPriorityText(t.priority),
+      completed: t.status === 'completed'
+    }))
+
+    // 更新近期项目（最多4个）
+    recentProjects.value = projects.slice(0, 4).map((p, index) => ({
+      id: p.id,
+      name: p.name,
+      description: p.customer || p.description || '暂无描述',
+      progress: p.progress || 0,
+      color: projectColors[index % projectColors.length]
+    }))
+
+    // 生成图表数据（基于任务更新时间）
+    updateChartData(tasks)
+
+  } catch (error) {
+    console.error('加载仪表盘数据失败:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+// 格式化日期
+const formatDueDate = (date) => {
+  if (!date) return '未设置'
+  const d = dayjs(date)
+  const now = dayjs()
+  const diffDays = d.diff(now, 'day')
+  
+  if (diffDays < 0) return '已过期'
+  if (diffDays === 0) return '今天'
+  if (diffDays === 1) return '明天'
+  if (diffDays < 7) return `${diffDays}天后`
+  return d.format('MM-DD')
+}
+
+// 获取优先级文本
+const getPriorityText = (priority) => {
+  const map = { high: '高', medium: '中', low: '低' }
+  return map[priority] || '中'
+}
+
+// 更新图表数据
+const updateChartData = (tasks) => {
+  const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+  const today = dayjs()
+  
+  chartData.value = days.map((label, index) => {
+    const dayStart = today.startOf('week').add(index, 'day')
+    const dayEnd = dayStart.endOf('day')
+    const count = tasks.filter(t => {
+      const updated = dayjs(t.updatedAt)
+      return updated.isAfter(dayStart) && updated.isBefore(dayEnd)
+    }).length
+    return {
+      label,
+      value: Math.min(count * 10, 100) // 最多100%
+    }
+  })
+}
+
 const refreshData = () => {
-  // 刷新数据逻辑
-  console.log('Refreshing data...')
+  loadDashboardData()
 }
 
 const isOverdue = (due) => {
   return due === '已过期'
 }
+
+// 组件挂载时加载数据
+onMounted(() => {
+  loadDashboardData()
+})
 </script>
 
 <style scoped>

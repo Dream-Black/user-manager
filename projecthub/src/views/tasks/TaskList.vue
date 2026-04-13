@@ -366,68 +366,67 @@ const boardColumns = [
 ]
 
 // 项目
-const projects = [
+const projects = ref([
   { id: 1, name: 'Website Redesign', color: '#2196F3' },
   { id: 2, name: 'App Development', color: '#4CAF50' },
   { id: 3, name: 'API Integration', color: '#FF9800' }
-]
+])
 
 // 成员
-const members = [
+const members = ref([
   { id: 1, name: '张三', color: '#2196F3' },
   { id: 2, name: '李四', color: '#4CAF50' },
   { id: 3, name: '王五', color: '#FF9800' },
   { id: 4, name: '赵六', color: '#9C27B0' }
-]
+])
 
 // 任务数据
-const tasks = ref([
-  {
-    id: 1, title: '完成首页UI设计', description: '包括响应式布局和交互效果',
-    status: 'in_progress', statusText: '进行中',
-    priority: 'high', priorityText: '高',
-    project: 'Website Redesign', projectColor: '#2196F3',
-    assignee: '张三', assigneeColor: '#2196F3',
-    dueDate: '2026-04-15',
-    subtaskCompleted: 3, subtaskTotal: 5
-  },
-  {
-    id: 2, title: '开发用户登录模块', description: '实现JWT认证',
-    status: 'pending', statusText: '待开始',
-    priority: 'high', priorityText: '高',
-    project: 'App Development', projectColor: '#4CAF50',
-    assignee: '李四', assigneeColor: '#4CAF50',
-    dueDate: '2026-04-20',
-    subtaskCompleted: 0, subtaskTotal: 3
-  },
-  {
-    id: 3, title: 'API接口文档编写', description: '使用Swagger生成',
-    status: 'completed', statusText: '已完成',
-    priority: 'medium', priorityText: '中',
-    project: 'API Integration', projectColor: '#FF9800',
-    assignee: '王五', assigneeColor: '#FF9800',
-    dueDate: '2026-04-10',
-    subtaskCompleted: 2, subtaskTotal: 2
-  },
-  {
-    id: 4, title: '数据库优化', description: '索引优化和查询调优',
-    status: 'in_progress', statusText: '进行中',
-    priority: 'medium', priorityText: '中',
-    project: 'Website Redesign', projectColor: '#2196F3',
-    assignee: '赵六', assigneeColor: '#9C27B0',
-    dueDate: '2026-04-25',
-    subtaskCompleted: 1, subtaskTotal: 4
-  },
-  {
-    id: 5, title: '性能测试报告', description: '使用JMeter进行压力测试',
-    status: 'pending', statusText: '待开始',
-    priority: 'low', priorityText: '低',
-    project: 'API Integration', projectColor: '#FF9800',
-    assignee: '张三', assigneeColor: '#2196F3',
-    dueDate: '2026-05-01',
-    subtaskCompleted: 0, subtaskTotal: 2
+const tasks = ref([])
+
+// 加载任务数据
+const loadTasks = async () => {
+  try {
+    const data = await taskService.getAll()
+    tasks.value = data.map(t => ({
+      id: t.id,
+      title: t.title,
+      description: t.description || '',
+      status: t.status,
+      statusText: getStatusText(t.status),
+      priority: t.priority,
+      priorityText: getPriorityText(t.priority),
+      project: t.projectName || '未分配',
+      projectColor: '#2196F3',
+      assignee: '未分配',
+      assigneeColor: '#9CA3AF',
+      dueDate: t.dueDate ? dayjs(t.dueDate).format('YYYY-MM-DD') : '未设置',
+      startDate: t.startDate,
+      progress: t.progress || 0,
+      estimatedHours: t.estimatedHours || 0,
+      subtaskCompleted: 0,
+      subtaskTotal: 0,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt
+    }))
+    pagination.value.total = tasks.value.length
+  } catch (error) {
+    console.error('加载任务失败:', error)
   }
-])
+}
+
+// 加载项目列表
+const loadProjects = async () => {
+  try {
+    const data = await projectService.getAll()
+    projects.value = data.map(p => ({
+      id: p.id,
+      name: p.name,
+      color: '#2196F3'
+    }))
+  } catch (error) {
+    console.error('加载项目失败:', error)
+  }
+}
 
 // 表单数据
 const formData = ref({
@@ -446,6 +445,27 @@ const rules = {
   project: [{ required: true, message: '请选择所属项目', trigger: 'change' }]
 }
 
+// 获取状态文本
+const getStatusText = (status) => {
+  const map = {
+    'todo': '待开始',
+    'pending': '待开始',
+    'in_progress': '进行中',
+    'completed': '已完成'
+  }
+  return map[status] || '待开始'
+}
+
+// 获取优先级文本
+const getPriorityText = (priority) => {
+  const map = {
+    'high': '高',
+    'medium': '中',
+    'low': '低'
+  }
+  return map[priority] || '中'
+}
+
 // 任务统计
 const taskStats = computed(() => [
   {
@@ -456,9 +476,9 @@ const taskStats = computed(() => [
     icon: TaskIcon
   },
   {
-    key: 'pending',
+    key: 'todo',
     label: '待开始',
-    value: tasks.value.filter(t => t.status === 'pending').length,
+    value: tasks.value.filter(t => t.status === 'todo' || t.status === 'pending').length,
     color: '#9CA3AF',
     icon: TimeIcon
   },
@@ -520,10 +540,17 @@ const isOverdue = (dueDate) => {
 }
 
 // 切换任务状态
-const toggleTaskStatus = (task) => {
-  task.status = task.status === 'completed' ? 'pending' : 'completed'
-  task.statusText = task.status === 'completed' ? '已完成' :
-                   task.status === 'in_progress' ? '进行中' : '待开始'
+const toggleTaskStatus = async (task) => {
+  const newStatus = task.status === 'completed' ? 'todo' : 'completed'
+  try {
+    await taskService.update(task.id, { status: newStatus })
+    task.status = newStatus
+    task.statusText = getStatusText(newStatus)
+    MessagePlugin.success(newStatus === 'completed' ? '任务已完成' : '任务已重置')
+  } catch (error) {
+    console.error('更新任务状态失败:', error)
+    MessagePlugin.error('更新失败，请重试')
+  }
 }
 
 // 编辑任务
@@ -540,50 +567,88 @@ const handleDelete = (task) => {
 }
 
 // 确认删除
-const confirmDelete = () => {
-  tasks.value = tasks.value.filter(t => t.id !== deletingTask.value.id)
-  showDeleteDialog.value = false
-  MessagePlugin.success('任务已删除')
+const confirmDelete = async () => {
+  try {
+    await taskService.delete(deletingTask.value.id)
+    tasks.value = tasks.value.filter(t => t.id !== deletingTask.value.id)
+    showDeleteDialog.value = false
+    MessagePlugin.success('任务已删除')
+  } catch (error) {
+    console.error('删除任务失败:', error)
+    MessagePlugin.error('删除失败，请重试')
+  }
 }
 
 // 提交表单
 const handleSubmit = async () => {
   const result = await formRef.value.validate()
   if (result === true) {
-    const project = projects.find(p => p.name === formData.value.project)
-    const member = members.find(m => m.name === formData.value.assignee)
+    try {
+      const project = projects.value.find(p => p.name === formData.value.project)
+      const member = members.value.find(m => m.name === formData.value.assignee)
 
-    if (editingTask.value) {
-      const index = tasks.value.findIndex(t => t.id === editingTask.value.id)
-      if (index !== -1) {
-        tasks.value[index] = {
-          ...tasks.value[index],
-          ...formData.value,
-          projectColor: project?.color || '#2196F3',
-          assigneeColor: member?.color || '#2196F3'
+      if (editingTask.value) {
+        // 更新任务
+        await taskService.update(editingTask.value.id, {
+          title: formData.value.title,
+          description: formData.value.description,
+          category: formData.value.project,
+          priority: formData.value.priority,
+          status: formData.value.status === 'pending' ? 'todo' : formData.value.status,
+          planEndDate: formData.value.dueDate ? new Date(formData.value.dueDate) : null
+        })
+        
+        const index = tasks.value.findIndex(t => t.id === editingTask.value.id)
+        if (index !== -1) {
+          tasks.value[index] = {
+            ...tasks.value[index],
+            ...formData.value,
+            statusText: getStatusText(formData.value.status),
+            priorityText: getPriorityText(formData.value.priority),
+            projectColor: project?.color || '#2196F3',
+            assigneeColor: member?.color || '#2196F3'
+          }
         }
+        MessagePlugin.success('任务已更新')
+      } else {
+        // 创建任务
+        const newTask = await taskService.create({
+          title: formData.value.title,
+          description: formData.value.description,
+          category: formData.value.project || 'dev',
+          priority: formData.value.priority || 'medium',
+          status: formData.value.status === 'pending' ? 'todo' : formData.value.status,
+          projectId: project?.id || 0,
+          planEndDate: formData.value.dueDate ? new Date(formData.value.dueDate) : null
+        })
+        
+        tasks.value.unshift({
+          id: newTask.id,
+          title: newTask.title,
+          description: newTask.description || '',
+          status: newTask.status,
+          statusText: getStatusText(newTask.status),
+          priority: newTask.priority,
+          priorityText: getPriorityText(newTask.priority),
+          project: project?.name || '未分配',
+          projectColor: project?.color || '#2196F3',
+          assignee: member?.name || '未分配',
+          assigneeColor: member?.color || '#9CA3AF',
+          dueDate: formData.value.dueDate || '未设置',
+          subtaskCompleted: 0,
+          subtaskTotal: 0
+        })
+        MessagePlugin.success('任务已创建')
       }
-      MessagePlugin.success('任务已更新')
-    } else {
-      tasks.value.unshift({
-        id: Date.now(),
-        ...formData.value,
-        statusText: formData.value.status === 'in_progress' ? '进行中' :
-                    formData.value.status === 'completed' ? '已完成' : '待开始',
-        priorityText: formData.value.priority === 'high' ? '高' :
-                      formData.value.priority === 'medium' ? '中' : '低',
-        projectColor: project?.color || '#2196F3',
-        assigneeColor: member?.color || '#2196F3',
-        subtaskCompleted: 0,
-        subtaskTotal: 0
-      })
-      MessagePlugin.success('任务已创建')
-    }
-    showCreateDialog.value = false
-    editingTask.value = null
-    formData.value = {
-      title: '', description: '', project: '', assignee: '',
-      status: 'pending', priority: 'medium', dueDate: ''
+      showCreateDialog.value = false
+      editingTask.value = null
+      formData.value = {
+        title: '', description: '', project: '', assignee: '',
+        status: 'todo', priority: 'medium', dueDate: ''
+      }
+    } catch (error) {
+      console.error('保存任务失败:', error)
+      MessagePlugin.error('保存失败，请重试')
     }
   }
 }
@@ -594,18 +659,25 @@ const handleDragStart = (event, task) => {
   event.dataTransfer.effectAllowed = 'move'
 }
 
-const handleDrop = (event, newStatus) => {
+const handleDrop = async (event, newStatus) => {
   if (draggedTask.value) {
-    draggedTask.value.status = newStatus
-    draggedTask.value.statusText = newStatus === 'in_progress' ? '进行中' :
-                                    newStatus === 'completed' ? '已完成' : '待开始'
+    try {
+      await taskService.update(draggedTask.value.id, {
+        status: newStatus === 'pending' ? 'todo' : newStatus
+      })
+      draggedTask.value.status = newStatus
+      draggedTask.value.statusText = getStatusText(newStatus)
+    } catch (error) {
+      console.error('更新任务状态失败:', error)
+      MessagePlugin.error('更新失败，请重试')
+    }
     draggedTask.value = null
   }
 }
 
 // 快速添加
 const quickAddTask = (status) => {
-  formData.value.status = status
+  formData.value.status = status === 'pending' ? 'todo' : status
   showCreateDialog.value = true
 }
 
@@ -616,8 +688,13 @@ import {
   CheckIcon, ViewColumnIcon
 } from 'tdesign-icons-vue-next'
 
+// 导入 API 服务和 dayjs
+import { taskService, projectService } from '@/services/dataService'
+import dayjs from 'dayjs'
+
 onMounted(() => {
-  pagination.value.total = filteredTasks.value.length
+  loadTasks()
+  loadProjects()
 })
 </script>
 

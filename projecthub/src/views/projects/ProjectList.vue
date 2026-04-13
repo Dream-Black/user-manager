@@ -206,29 +206,80 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { projectService } from '@/services/dataService'
+import dayjs from 'dayjs'
 
 const searchQuery = ref('')
 const filterStatus = ref('')
 const viewMode = ref('grid')
 const showCreateModal = ref(false)
+const loading = ref(false)
 
-const projects = ref([
-  { id: 1, name: 'AI助手', description: '智能对话系统开发', status: 'active', statusText: '进行中', progress: 75, tasks: 24, members: ['张三', '李四', '王五', '赵六'], dueDate: '2026-04-30', color: 'linear-gradient(135deg, #3B82F6, #60A5FA)' },
-  { id: 2, name: '数据分析平台', description: '用户行为分析系统', status: 'active', statusText: '进行中', progress: 60, tasks: 18, members: ['张三', '李四'], dueDate: '2026-05-15', color: 'linear-gradient(135deg, #10B981, #34D399)' },
-  { id: 3, name: '移动端APP', description: 'iOS/Android应用开发', status: 'active', statusText: '进行中', progress: 45, tasks: 32, members: ['王五', '赵六', '孙七'], dueDate: '2026-06-01', color: 'linear-gradient(135deg, #F59E0B, #FBBF24)' },
-  { id: 4, name: '官网改版', description: '企业官网全新设计', status: 'completed', statusText: '已完成', progress: 100, tasks: 15, members: ['张三', '孙七'], dueDate: '2026-03-20', color: 'linear-gradient(135deg, #6366F1, #818CF8)' },
-  { id: 5, name: '电商后台', description: '电商管理系统开发', status: 'paused', statusText: '已暂停', progress: 30, tasks: 8, members: ['李四', '赵六'], dueDate: '2026-05-30', color: 'linear-gradient(135deg, #EC4899, #F472B6)' },
-  { id: 6, name: '内部办公系统', description: 'OA办公自动化系统', status: 'active', statusText: '进行中', progress: 55, tasks: 20, members: ['张三', '李四', '王五'], dueDate: '2026-06-15', color: 'linear-gradient(135deg, #14B8A6, #2DD4BF)' },
-])
+// 项目颜色映射
+const projectColors = [
+  'linear-gradient(135deg, #3B82F6, #60A5FA)',
+  'linear-gradient(135deg, #10B981, #34D399)',
+  'linear-gradient(135deg, #F59E0B, #FBBF24)',
+  'linear-gradient(135deg, #6366F1, #818CF8)',
+  'linear-gradient(135deg, #EC4899, #F472B6)',
+  'linear-gradient(135deg, #14B8A6, #2DD4BF)'
+]
 
-const activeProjects = computed(() => projects.value.filter(p => p.status === 'active').length)
+const projects = ref([])
+
+const activeProjects = computed(() => projects.value.filter(p => p.status === 'active' || p.status === 'in_progress').length)
 const completedProjects = computed(() => projects.value.filter(p => p.status === 'completed').length)
+
+// 状态文本映射
+const getStatusText = (status) => {
+  const map = {
+    'active': '进行中',
+    'in_progress': '进行中',
+    'completed': '已完成',
+    'paused': '已暂停',
+    'archived': '已归档'
+  }
+  return map[status] || '进行中'
+}
+
+// 加载项目数据
+const loadProjects = async () => {
+  loading.value = true
+  try {
+    const data = await projectService.getAll({
+      type: filterStatus.value || undefined,
+      status: filterStatus.value || undefined,
+      search: searchQuery.value || undefined
+    })
+    
+    projects.value = data.map((p, index) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description || p.customer || '暂无描述',
+      status: p.status,
+      statusText: getStatusText(p.status),
+      progress: p.progress || 0,
+      tasks: p.taskCount || p.tasks?.length || 0,
+      completedTasks: p.completedTaskCount || 0,
+      members: ['成员1', '成员2'], // 后端暂无成员数据
+      dueDate: p.completedAt ? dayjs(p.completedAt).format('YYYY-MM-DD') : '未设置',
+      color: projectColors[index % projectColors.length],
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt
+    }))
+  } catch (error) {
+    console.error('加载项目失败:', error)
+  } finally {
+    loading.value = false
+  }
+}
 
 const filteredProjects = computed(() => {
   return projects.value.filter(project => {
     const matchSearch = project.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                        project.description.toLowerCase().includes(searchQuery.value.toLowerCase())
+                        project.description.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+                        (project.customer && project.customer.toLowerCase().includes(searchQuery.value.toLowerCase()))
     const matchStatus = !filterStatus.value || project.status === filterStatus.value
     return matchSearch && matchStatus
   })
@@ -238,11 +289,31 @@ const editProject = (project) => {
   console.log('Edit project:', project)
 }
 
-const deleteProject = (id) => {
+const deleteProject = async (id) => {
   if (confirm('确定要删除这个项目吗？')) {
-    projects.value = projects.value.filter(p => p.id !== id)
+    try {
+      await projectService.delete(id)
+      projects.value = projects.value.filter(p => p.id !== id)
+    } catch (error) {
+      console.error('删除项目失败:', error)
+      alert('删除失败，请重试')
+    }
   }
 }
+
+// 监听筛选条件变化
+const handleSearch = () => {
+  loadProjects()
+}
+
+const handleStatusChange = () => {
+  loadProjects()
+}
+
+// 组件挂载时加载数据
+onMounted(() => {
+  loadProjects()
+})
 </script>
 
 <style scoped>

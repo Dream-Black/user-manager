@@ -37,7 +37,10 @@
               <div v-else class="ai-avatar-sm"><AiIcon /></div>
             </div>
             <div class="message-content">
-              <div class="message-bubble">{{ msg.content }}</div>
+              <div class="message-bubble" :class="{ loading: msg.isLoading }">
+                <span v-if="msg.isLoading" class="loading-dots">...</span>
+                <span v-else>{{ msg.content }}</span>
+              </div>
               <div class="message-time">{{ msg.time }}</div>
             </div>
           </div>
@@ -81,12 +84,16 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, markRaw } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
+import { aiService } from '@/services/dataService'
+import { projectService } from '@/services/dataService'
+import { taskService } from '@/services/dataService'
 
 const inputText = ref('')
 const messages = ref([])
 const chatAreaRef = ref(null)
+const isLoading = ref(false)
 
 const quickPrompts = [
   { text: '分析一下当前项目的进度', icon: markRaw(ChartIcon) },
@@ -96,7 +103,7 @@ const quickPrompts = [
 ]
 
 const handleSend = async () => {
-  if (!inputText.value.trim()) return
+  if (!inputText.value.trim() || isLoading.value) return
 
   const userMessage = {
     role: 'user',
@@ -109,16 +116,67 @@ const handleSend = async () => {
   await nextTick()
   scrollToBottom()
 
-  // 模拟AI回复
-  setTimeout(() => {
-    const aiMessage = {
+  // 添加加载状态
+  isLoading.value = true
+  const loadingMessage = {
+    role: 'assistant',
+    content: '思考中...',
+    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+    isLoading: true
+  }
+  messages.value.push(loadingMessage)
+
+  try {
+    // 调用真实的 AI API
+    const response = await aiService.chat({
+      message: userMessage.content,
+      context: await getContext()
+    })
+
+    // 替换加载消息为真实回复
+    const lastIndex = messages.value.length - 1
+    messages.value[lastIndex] = {
       role: 'assistant',
-      content: getAIResponse(userMessage.content),
-      time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+      content: response.message || response.response || response.content || '抱歉，我暂时无法回答这个问题。',
+      time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      isLoading: false
     }
-    messages.value.push(aiMessage)
+  } catch (error) {
+    console.error('AI 响应失败:', error)
+    
+    // 替换为错误消息
+    const lastIndex = messages.value.length - 1
+    messages.value[lastIndex] = {
+      role: 'assistant',
+      content: '抱歉，服务暂时不可用，请稍后再试。',
+      time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      isLoading: false
+    }
+  } finally {
+    isLoading.value = false
     nextTick(() => scrollToBottom())
-  }, 1000)
+  }
+}
+
+// 获取上下文数据用于 AI 分析
+const getContext = async () => {
+  try {
+    const [projects, tasks] = await Promise.all([
+      projectService.getAll(),
+      taskService.getAll()
+    ])
+    
+    return {
+      projects: projects.slice(0, 5),
+      tasks: tasks.slice(0, 10),
+      totalProjects: projects.length,
+      totalTasks: tasks.length,
+      completedTasks: tasks.filter(t => t.status === 'completed').length
+    }
+  } catch (error) {
+    console.error('获取上下文失败:', error)
+    return null
+  }
 }
 
 const sendQuickPrompt = (text) => {
@@ -132,17 +190,6 @@ const scrollToBottom = () => {
   }
 }
 
-const getAIResponse = (question) => {
-  const responses = [
-    '根据当前数据，项目进度符合预期。建议继续关注高优先级任务的完成情况。',
-    '本周共完成任务15个，比上周增长20%。建议保持当前的工作节奏。',
-    '根据任务分析，建议将部分高优先级任务分配给前端团队，以加快进度。',
-    '根据任务列表，建议优先处理"完成首页UI设计"任务，剩余时间3天。'
-  ]
-  return responses[Math.floor(Math.random() * responses.length)]
-}
-
-import { markRaw, ref as vueRef } from 'vue'
 import { AiIcon, SendIcon, ChartIcon, FileIcon, TaskIcon, StarIcon } from 'tdesign-icons-vue-next'
 </script>
 
@@ -181,6 +228,8 @@ import { AiIcon, SendIcon, ChartIcon, FileIcon, TaskIcon, StarIcon } from 'tdesi
 .message-content { max-width: 70%; }
 .message-bubble { padding: 12px 16px; background: var(--bg-page); border-radius: 16px 16px 16px 4px; font-size: 14px; line-height: 1.6; color: var(--text-primary); }
 .message-time { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
+.loading-dots { animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 
 .quick-prompts { padding: 0 24px 20px; }
 .prompt-label { font-size: 12px; color: var(--text-tertiary); margin-bottom: 12px; }
