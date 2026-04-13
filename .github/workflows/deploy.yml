@@ -47,12 +47,11 @@ jobs:
       - name: 构建并推送后端镜像
         run: |
           set -x
-          echo "Actor: ${{ github.actor }}"
-          echo "Event: ${{ github.event_name }}"
-          docker version
+          pwd
+          ls -la api/
+          docker info
           OWNER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
-          echo "Owner (lowercase): $OWNER"
-          docker build -t "$REGISTRY/$OWNER/projecthub-api:latest" -t "$REGISTRY/$OWNER/projecthub-api:${{ github.sha }}" ./api
+          docker build -t "$REGISTRY/$OWNER/projecthub-api:latest" -t "$REGISTRY/$OWNER/projecthub-api:${{ github.sha }}" -f api/Dockerfile .
           docker push -a "$REGISTRY/$OWNER/projecthub-api"
 
   # ══════════════════════════════════════════
