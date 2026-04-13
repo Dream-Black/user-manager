@@ -58,6 +58,23 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 测试 SSH 连接
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 2m
+          debug: true
+          script: |
+            echo "===== SSH 连接测试成功 ====="
+            echo "主机名: $(hostname)"
+            echo "当前用户: $(whoami)"
+            echo "当前目录: $(pwd)"
+            echo "Docker: $(docker --version 2>/dev/null || echo '未安装')"
+            echo "Docker Compose: $(docker compose version 2>/dev/null || docker-compose --version 2>/dev/null || echo '未安装')"
+            df -h / | head -2
+            
       - name: 部署到腾讯云
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -65,64 +82,50 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 15m
-          debug: true
+          debug: false
           script: |
-            set -e
-            echo "===== 系统诊断 ====="
-            echo "主机: $(hostname)"
-            echo "当前目录: $(pwd)"
-            echo "当前用户: $(whoami)"
-            echo "Docker 版本: $(docker --version 2>/dev/null || echo 'Docker 未安装')"
-            echo "Docker Compose 版本: $(docker compose version 2>/dev/null || echo 'Docker Compose 未安装')"
-            echo "磁盘空间:"
-            df -h /
-            echo ""
+            set -x  # 启用调试输出
+            
             echo "===== 准备部署目录 ====="
+            # 创建项目目录
+            if [ ! -d /opt/projecthub ]; then
+              sudo mkdir -p /opt/projecthub
+              sudo chown $(whoami):$(whoami) /opt/projecthub
+            fi
             
-            # 创建并进入项目目录
-            sudo mkdir -p /opt/projecthub
             cd /opt/projecthub
+            echo "当前目录: $(pwd)"
             
-            # 如果目录为空或没有 .git，使用 HTTPS 克隆
+            # 克隆或更新代码
             if [ ! -d .git ]; then
-              echo "目录为空，克隆代码..."
-              sudo rm -rf /opt/projecthub/* /opt/projecthub/.* 2>/dev/null || true
-              git clone https://github.com/Dream-Black/user-manager.git /opt/projecthub
+              echo "克隆代码..."
+              rm -rf /opt/projecthub/* 2>/dev/null || true
+              git clone https://github.com/Dream-Black/user-manager.git .
             else
               echo "更新代码..."
-              git fetch origin
-              git reset --hard origin/main
+              git reset --hard HEAD
+              git pull origin main
             fi
             
             echo ""
-            echo "===== 检查文件 ====="
-            ls -la /opt/projecthub/
-            echo ""
+            echo "===== 目录内容 ====="
+            ls -la
             
-            # 确保 .env 文件存在
+            # 创建 .env 文件
             if [ ! -f .env ]; then
               echo "创建 .env 文件..."
               echo "MYSQL_ROOT_PASSWORD=chennan" > .env
               echo "DEEPSEEK_API_KEY=" >> .env
-              cat .env
             fi
             
             echo ""
-            echo "===== 停止旧容器 ====="
-            docker compose -f docker-compose.prod.yml down 2>/dev/null || echo "没有运行中的容器"
+            echo "===== 停止旧服务 ====="
+            docker compose -f docker-compose.prod.yml down 2>/dev/null || true
             
             echo ""
-            echo "===== 启动服务 ====="
+            echo "===== 启动新服务 ====="
             docker compose -f docker-compose.prod.yml up -d --build
             
             echo ""
-            echo "===== 等待服务启动 ====="
-            sleep 15
-            
-            echo ""
-            echo "===== 部署完成 - 容器状态 ====="
+            echo "===== 部署完成 ====="
             docker compose -f docker-compose.prod.yml ps
-            
-            echo ""
-            echo "===== 服务日志 ====="
-            docker compose -f docker-compose.prod.yml logs --tail=30
