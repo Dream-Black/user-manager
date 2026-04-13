@@ -1,0 +1,6 @@
+# 运行时镜像（构建产物从 publish/ 目录复制进来）
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
+WORKDIR /app
+COPY . .
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "ProjectHub.Api.dll"]

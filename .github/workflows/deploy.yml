@@ -29,25 +29,20 @@ jobs:
         with:
           dotnet-version: "9.0.x"
 
-      - name: 还原依赖
-        working-directory: api
-        run: dotnet restore
-
-      - name: 编译检查
-        working-directory: api
-        run: dotnet build --no-restore -c Release
-
-      - name: 登录 GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 还原并发布
+        run: |
+          dotnet restore api/ProjectHub.Api.csproj
+          dotnet publish api/ProjectHub.Api.csproj -c Release -o ./publish/api --no-restore
 
       - name: 构建并推送后端镜像
-        run: |
-          docker build -t "ghcr.io/dream-black/projecthub-api:latest" -t "ghcr.io/dream-black/projecthub-api:${{ github.sha }}" api/
-          docker push --all-tags ghcr.io/dream-black/projecthub-api
+        uses: docker/build-push-action@v5
+        with:
+          context: ./publish/api
+          file: ./api/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/dream-black/projecthub-api:latest
+            ${{ env.REGISTRY }}/dream-black/projecthub-api:${{ github.sha }}
 
   # ══════════════════════════════════════════
   # JOB 2: 前端构建 & 推送镜像
@@ -85,8 +80,8 @@ jobs:
 
       - name: 构建并推送前端镜像
         run: |
-          docker build -t "ghcr.io/dream-black/projecthub-frontend:latest" -t "ghcr.io/dream-black/projecthub-frontend:${{ github.sha }}" projecthub/
-          docker push --all-tags ghcr.io/dream-black/projecthub-frontend
+          docker build -t "$REGISTRY/dream-black/projecthub-frontend:latest" -t "$REGISTRY/dream-black/projecthub-frontend:${{ github.sha }}" projecthub/
+          docker push --all-tags "$REGISTRY/dream-black/projecthub-frontend"
 
   # ══════════════════════════════════════════
   # JOB 3: 部署到腾讯云服务器（仅 main/master push）
@@ -98,7 +93,7 @@ jobs:
     if: github.event_name == 'push'
 
     steps:
-      - name: 检出代码（取 docker-compose.yml）
+      - name: 检出代码（取 docker-compose.prod.yml）
         uses: actions/checkout@v4
 
       - name: SSH 部署到腾讯云
@@ -111,17 +106,15 @@ jobs:
             set -e
             cd /opt/projecthub
 
-            # 拉取最新代码（docker-compose.yml 等配置同步）
+            # 拉取最新配置
             git pull origin main || git pull origin master
 
-            # 登录 GHCR 拉取最新镜像
+            # 登录 GHCR
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # 更新并重启服务（使用生产配置，数据库不受影响）
+            # 拉取并重启
             docker compose -f docker-compose.prod.yml pull api frontend
             docker compose -f docker-compose.prod.yml up -d --no-deps api frontend
 
-            # 清理旧镜像，节省磁盘
             docker image prune -f
-
             echo "✅ 部署完成！$(date)"
