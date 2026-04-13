@@ -91,27 +91,36 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             set -e
-            cd /opt/projecthub
 
-            # 克隆最新代码（用于 docker-compose.prod.yml 和 dockerfile）
+            # 配置 SSH 使用 github_deploy 密钥
+            mkdir -p ~/.ssh
+            cat >> ~/.ssh/config << 'EOF'
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/github_deploy
+    StrictHostKeyChecking no
+EOF
+            chmod 600 ~/.ssh/config
+
+            # 克隆最新代码
             git clone git@github.com:Dream-Black/user-manager.git /tmp/projecthub-latest
             cp /tmp/projecthub-latest/docker-compose.prod.yml /opt/projecthub/
 
-            # 构建并发布后端（如果还没装 dotnet 就先装）
+            # 构建并发布后端
             if ! command -v dotnet &> /dev/null; then
-              wget https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
+              wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
               chmod +x /tmp/dotnet-install.sh
               /tmp/dotnet-install.sh --channel 9.0 --install-dir /opt/dotnet
-              export PATH="$PATH:/opt/dotnet"
             fi
             export PATH="$PATH:/opt/dotnet"
             dotnet restore /tmp/projecthub-latest/api/ProjectHub.Api.csproj
             dotnet publish /tmp/projecthub-latest/api/ProjectHub.Api.csproj -c Release -o /opt/projecthub/api-publish --no-restore
 
-            # 登录 GHCR 拉取最新前端镜像
+            # 登录 GHCR
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # 重启前端容器
+            # 重启前端
             docker compose -f docker-compose.prod.yml pull frontend
             docker compose -f docker-compose.prod.yml up -d --no-deps frontend
 
@@ -119,10 +128,9 @@ jobs:
             pkill -f "dotnet.*ProjectHub.Api" || true
             sleep 1
             cd /opt/projecthub/api-publish
-            export MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-chennan}"
-            export ConnectionStrings__DefaultConnection="Server=mysql;Port=3306;Database=projecthub;User=root;Password=${MYSQL_ROOT_PASSWORD:-chennan}"
-            export PATH="$PATH:/opt/dotnet"
-            nohup dotnet ProjectHub.Api.dll > /opt/projecthub/api.log 2>&1 &
+            MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-chennan}" \
+            ConnectionStrings__DefaultConnection="Server=mysql;Port=3306;Database=projecthub;User=root;Password=${MYSQL_ROOT_PASSWORD:-chennan}" \
+              nohup dotnet ProjectHub.Api.dll > /opt/projecthub/api.log 2>&1 &
             sleep 5
             curl -sf http://localhost:5000/swagger/index.html && echo "✅ 部署完成！$(date)" || cat /opt/projecthub/api.log
 
