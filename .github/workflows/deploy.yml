@@ -126,15 +126,32 @@ jobs:
               echo "DEEPSEEK_API_KEY=" >> .env
             fi
 
-            # 生成版本信息
+            # 生成版本信息（使用 sed 替换而不是追加）
             echo "生成版本信息..."
             VERSION=$(cat VERSION 2>/dev/null || echo "1.0.0")
             BUILD_DATE=$(date +%Y-%m-%d)
             GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-            echo "APP_VERSION=$VERSION" >> .env
-            echo "BUILD_DATE=$BUILD_DATE" >> .env
-            echo "GIT_COMMIT=$GIT_COMMIT" >> .env
-            echo "版本: VERSION,构建日期:BUILD_DATE, 提交: $GIT_COMMIT"
+            
+            # 使用 sed 更新或追加变量
+            if grep -q "^APP_VERSION=" .env 2>/dev/null; then
+              sed -i "s|^APP_VERSION=.*|APP_VERSION=$VERSION|" .env
+            else
+              echo "APP_VERSION=$VERSION" >> .env
+            fi
+            
+            if grep -q "^BUILD_DATE=" .env 2>/dev/null; then
+              sed -i "s|^BUILD_DATE=.*|BUILD_DATE=$BUILD_DATE|" .env
+            else
+              echo "BUILD_DATE=$BUILD_DATE" >> .env
+            fi
+            
+            if grep -q "^GIT_COMMIT=" .env 2>/dev/null; then
+              sed -i "s|^GIT_COMMIT=.*|GIT_COMMIT=$GIT_COMMIT|" .env
+            else
+              echo "GIT_COMMIT=$GIT_COMMIT" >> .env
+            fi
+            
+            echo "版本: $VERSION, 构建日期: $BUILD_DATE, 提交: $GIT_COMMIT"
 
             # 部署
             echo "部署服务..."
