@@ -110,13 +110,17 @@ jobs:
             cd ~/projecthub
             pwd
             
-            # 克隆代码
-            echo "克隆代码..."
-            cd ~
-            rm -rf ~/projecthub
-            mkdir -p ~/projecthub
-            cd ~/projecthub
-            git clone https://github.com/Dream-Black/user-manager.git .
+            # 更新代码（保留数据卷）
+            echo "更新代码..."
+            if [ -d ~/projecthub/.git ]; then
+              cd ~/projecthub
+              git fetch origin
+              git reset --hard origin/main
+            else
+              mkdir -p ~/projecthub
+              cd ~/projecthub
+              git clone https://github.com/Dream-Black/user-manager.git .
+            fi
             
             echo "文件列表:"
             ls -la

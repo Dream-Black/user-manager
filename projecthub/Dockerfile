@@ -19,10 +19,8 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # 拷贝 Nginx 配置
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# 确保版本文件存在（如果构建时未生成，使用默认版本）
-RUN if [ ! -f /usr/share/nginx/html/version.json ]; then \
-    echo '{"version":"1.0.0","buildDate":"'$(date +%Y-%m-%d)'","commit":"unknown"}' > /usr/share/nginx/html/version.json; \
-fi
+# 确保版本文件存在（从构建上下文复制或生成默认版本）
+COPY version.json /usr/share/nginx/html/version.json
 
 EXPOSE 80
 
