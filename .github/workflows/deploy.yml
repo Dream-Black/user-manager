@@ -8,8 +8,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # GHCR 要求镜像名全小写，github.repository_owner 需转换
-  IMAGE_PREFIX: ${{ toLowerCase(github.repository_owner) }}/projecthub
+  # GHCR 要求镜像名全小写，使用 github.actor 替代（已为小写）
+  IMAGE_PREFIX: ${{ github.actor }}/projecthub
 
 jobs:
   # ══════════════════════════════════════════
