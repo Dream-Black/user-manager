@@ -153,6 +153,8 @@ docker compose exec mysql mysql -u root -p projecthub
 
 ## 故障排查
 
+> ⚠️ **注意**：GitHub Actions 部署依赖服务器允许来自 GitHub Actions 运行器的 SSH 连接。如果部署失败，请检查腾讯云安全组是否放行了来自 `0.0.0.0/0` 的 22 端口，或考虑使用腾讯云 Coding DevOps 流水线。
+
 | 问题 | 排查方式 |
 |------|---------|
 | 前端 502 / 无法访问 API | `docker compose logs frontend` 检查 Nginx，确认 api 容器健康 |
