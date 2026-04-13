@@ -46,8 +46,7 @@ jobs:
 
       - name: 构建并推送后端镜像
         run: |
-          docker version
-          docker build -t "ghcr.io/dream-black/projecthub-api:latest" -t "ghcr.io/dream-black/projecthub-api:${{ github.sha }}" -f api/Dockerfile ./api
+          docker build -t "ghcr.io/dream-black/projecthub-api:latest" -t "ghcr.io/dream-black/projecthub-api:${{ github.sha }}" api/
           docker push --all-tags ghcr.io/dream-black/projecthub-api
 
   # ══════════════════════════════════════════
@@ -85,13 +84,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 构建并推送前端镜像
-        uses: docker/build-push-action@v5
-        with:
-          context: ./projecthub
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/dream-black/projecthub-frontend:latest
-            ${{ env.REGISTRY }}/dream-black/projecthub-frontend:${{ github.sha }}
+        run: |
+          docker build -t "ghcr.io/dream-black/projecthub-frontend:latest" -t "ghcr.io/dream-black/projecthub-frontend:${{ github.sha }}" projecthub/
+          docker push --all-tags ghcr.io/dream-black/projecthub-frontend
 
   # ══════════════════════════════════════════
   # JOB 3: 部署到腾讯云服务器（仅 main/master push）
