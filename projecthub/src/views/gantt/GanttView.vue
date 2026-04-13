@@ -15,7 +15,17 @@
       </div>
     </div>
 
-    <div class="gantt-container">
+    <!-- 加载状态 -->
+    <div v-if="loading" class="gantt-loading">
+      <t-loading size="large" text="加载甘特图数据..." />
+    </div>
+
+    <!-- 空状态 -->
+    <div v-else-if="ganttData.length === 0" class="gantt-empty">
+      <t-empty title="暂无甘特图数据" description="请先创建项目或添加任务" />
+    </div>
+
+    <div v-else class="gantt-container">
       <!-- 时间轴头部 -->
       <div class="timeline-header">
         <div class="task-name-header">任务名称</div>
@@ -96,21 +106,89 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
+import { ganttService } from '@/services/dataService'
+import { AddIcon } from 'tdesign-icons-vue-next'
 
 const dayWidth = ref(40)
+const loading = ref(true)
+const ganttData = ref([])
+const dateRangeStart = ref(dayjs().subtract(7, 'day'))
+const dateRangeEnd = ref(dayjs().add(30, 'day'))
+
 const zoomIn = () => { dayWidth.value = Math.min(80, dayWidth.value + 10) }
 const zoomOut = () => { dayWidth.value = Math.max(20, dayWidth.value - 10) }
 
 const today = dayjs()
 
+// 加载甘特图数据
+const loadGanttData = async () => {
+  try {
+    loading.value = true
+    const response = await ganttService.getData({ days: 60 })
+    
+    // 将扁平的任务列表转换为按项目分组的嵌套结构
+    const projectMap = new Map()
+    
+    response.items.forEach(task => {
+      if (!projectMap.has(task.projectId)) {
+        projectMap.set(task.projectId, {
+          id: task.projectId,
+          name: task.projectName,
+          color: task.projectColor || '#4A90D9',
+          startDate: task.startDate,
+          endDate: task.endDate,
+          progress: 0,
+          tasks: []
+        })
+      }
+      
+      const project = projectMap.get(task.projectId)
+      project.tasks.push({
+        id: task.id,
+        name: task.title,
+        startDate: task.startDate,
+        endDate: task.endDate,
+        status: task.status,
+        progress: task.progress || 0
+      })
+      
+      // 更新项目的开始/结束日期和进度
+      if (task.startDate && (!project.startDate || dayjs(task.startDate).isBefore(project.startDate))) {
+        project.startDate = task.startDate
+      }
+      if (task.endDate && (!project.endDate || dayjs(task.endDate).isAfter(project.endDate))) {
+        project.endDate = task.endDate
+      }
+    })
+    
+    // 计算每个项目的总进度
+    projectMap.forEach(project => {
+      if (project.tasks.length > 0) {
+        const totalProgress = project.tasks.reduce((sum, t) => sum + (t.progress || 0), 0)
+        project.progress = Math.round(totalProgress / project.tasks.length)
+      }
+    })
+    
+    ganttData.value = Array.from(projectMap.values())
+    dateRangeStart.value = dayjs(response.startDate)
+    dateRangeEnd.value = dayjs(response.endDate)
+  } catch (error) {
+    console.error('加载甘特图数据失败:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  loadGanttData()
+})
+
 const dateRange = computed(() => {
-  const start = today.subtract(7, 'day')
-  const end = today.add(30, 'day')
   const days = []
-  let current = start
-  while (current.isBefore(end) || current.isSame(end, 'day')) {
+  let current = dateRangeStart.value
+  while (current.isBefore(dateRangeEnd.value) || current.isSame(dateRangeEnd.value, 'day')) {
     days.push(current)
     current = current.add(1, 'day')
   }
@@ -118,41 +196,9 @@ const dateRange = computed(() => {
 })
 
 const todayPosition = computed(() => {
-  const daysSinceStart = today.diff(dateRange.value[0], 'day')
+  const daysSinceStart = today.diff(dateRangeStart.value, 'day')
   return 200 + daysSinceStart * dayWidth.value + dayWidth.value / 2
 })
-
-const ganttData = ref([
-  {
-    id: 1, name: 'Website Redesign', color: '#2196F3',
-    startDate: '2026-04-01', endDate: '2026-04-30', progress: 75,
-    tasks: [
-      { id: 11, name: '需求分析', startDate: '2026-04-01', endDate: '2026-04-05', status: 'completed' },
-      { id: 12, name: 'UI设计', startDate: '2026-04-06', endDate: '2026-04-15', status: 'completed' },
-      { id: 13, name: '前端开发', startDate: '2026-04-16', endDate: '2026-04-25', status: 'in_progress' },
-      { id: 14, name: '测试上线', startDate: '2026-04-26', endDate: '2026-04-30', status: 'pending' }
-    ]
-  },
-  {
-    id: 2, name: 'App Development', color: '#4CAF50',
-    startDate: '2026-04-10', endDate: '2026-06-30', progress: 45,
-    tasks: [
-      { id: 21, name: '技术选型', startDate: '2026-04-10', endDate: '2026-04-15', status: 'completed' },
-      { id: 22, name: '原型设计', startDate: '2026-04-16', endDate: '2026-04-30', status: 'completed' },
-      { id: 23, name: 'iOS开发', startDate: '2026-05-01', endDate: '2026-06-15', status: 'in_progress' },
-      { id: 24, name: 'Android开发', startDate: '2026-05-15', endDate: '2026-06-20', status: 'pending' }
-    ]
-  },
-  {
-    id: 3, name: 'API Integration', color: '#FF9800',
-    startDate: '2026-04-05', endDate: '2026-04-25', progress: 90,
-    tasks: [
-      { id: 31, name: '接口设计', startDate: '2026-04-05', endDate: '2026-04-10', status: 'completed' },
-      { id: 32, name: '开发实现', startDate: '2026-04-11', endDate: '2026-04-20', status: 'completed' },
-      { id: 33, name: '联调测试', startDate: '2026-04-21', endDate: '2026-04-25', status: 'in_progress' }
-    ]
-  }
-])
 
 const getLeftPosition = (date) => {
   const startDate = dateRange.value[0]
@@ -172,12 +218,12 @@ const isToday = (date) => dayjs(date).isSame(today, 'day')
 const isWeekend = (date) => [0, 6].includes(dayjs(date).day())
 const formatDay = (date) => dayjs(date).format('D')
 const formatMonth = (date) => dayjs(date).format('MMM')
-
-import { AddIcon } from 'tdesign-icons-vue-next'
 </script>
 
 <style scoped>
 .gantt-page { max-width: 100%; overflow-x: auto; }
+.gantt-loading { display: flex; justify-content: center; align-items: center; min-height: 400px; background: var(--bg-container); border-radius: var(--radius-xl); }
+.gantt-empty { display: flex; justify-content: center; align-items: center; min-height: 400px; background: var(--bg-container); border-radius: var(--radius-xl); }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; animation: fadeInUp 0.5s ease; }
 .header-content { display: flex; flex-direction: column; gap: 4px; }
 .page-title { font-size: 28px; font-weight: 700; color: var(--text-primary); margin: 0; }
