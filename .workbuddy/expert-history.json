@@ -69,7 +69,67 @@
         "usedAt": 1776098324036,
         "industryId": "01-Design"
       }
+    ],
+    "52bf7033f49c4c55bcec53603a7bc6af": [
+      {
+        "expertId": "ApiTestingExpert",
+        "name": "Harper",
+        "profession": "API测试专家",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/08-QualityAssurance/ApiTestingExpert/ApiTestingExpert.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/08-QualityAssurance/ApiTestingExpert/ApiTestingExpert_zh.md",
+        "usedAt": 1776174303333,
+        "industryId": "08-QualityAssurance"
+      },
+      {
+        "expertId": "BackendArchitect",
+        "name": "Joy",
+        "profession": "后端架构师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/BackendArchitect/BackendArchitect.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/BackendArchitect/BackendArchitect_zh.md",
+        "usedAt": 1776173940333,
+        "industryId": "02-Engineering"
+      },
+      {
+        "expertId": "FrontendDeveloper",
+        "name": "Paul",
+        "profession": "前端开发工程师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/FrontendDeveloper/FrontendDeveloper.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/FrontendDeveloper/FrontendDeveloper_zh.md",
+        "usedAt": 1776170291543,
+        "industryId": "02-Engineering"
+      }
+    ],
+    "bb459df587de47b4951aba7072c9464b": [
+      {
+        "expertId": "FrontendDeveloper",
+        "name": "Paul",
+        "profession": "前端开发工程师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/FrontendDeveloper/FrontendDeveloper.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/FrontendDeveloper/FrontendDeveloper_zh.md",
+        "usedAt": 1776175123368,
+        "industryId": "02-Engineering"
+      }
+    ],
+    "eb8ca79e4bf3492ba252ac6fced141ac": [
+      {
+        "expertId": "UiDesigner",
+        "name": "Sam",
+        "profession": "UI设计师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/01-Design/UiDesigner/UiDesigner.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/01-Design/UiDesigner/UiDesigner_zh.md",
+        "usedAt": 1776181904698,
+        "industryId": "01-Design"
+      },
+      {
+        "expertId": "SeniorDeveloper",
+        "name": "Will",
+        "profession": "高级开发工程师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/SeniorDeveloper/SeniorDeveloper.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/SeniorDeveloper/SeniorDeveloper_zh.md",
+        "usedAt": 1776177860310,
+        "industryId": "02-Engineering"
+      }
     ]
   },
-  "lastUpdated": 1776103059383
+  "lastUpdated": 1776183512246
 }

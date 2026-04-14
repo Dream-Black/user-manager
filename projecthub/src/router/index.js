@@ -70,6 +70,18 @@ const routes = [
     name: 'Settings',
     component: SettingsView,
     meta: { title: '个人设置' }
+  },
+  {
+    path: '/resources',
+    name: 'Resources',
+    component: () => import('../views/resources/ResourceList.vue'),
+    meta: { title: '资源管理' }
+  },
+  {
+    path: '/resources/comics/:id',
+    name: 'ComicReader',
+    component: () => import('../views/resources/ComicReader.vue'),
+    meta: { title: '漫画阅读' }
   }
 ]
 

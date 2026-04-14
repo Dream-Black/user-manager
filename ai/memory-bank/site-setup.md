@@ -546,3 +546,86 @@ jobs/
 **文档版本**: v2.0
 **更新日期**: 2026-04-13
 **负责人**: ProjectHub PM
+
+---
+
+## 十一、资源管理模块（扩展功能）
+
+### 11.1 功能概述
+管理本地电脑上的漫画、视频、小说、图片资源，通过网页浏览。
+
+### 11.2 技术架构
+```
+浏览器(8081) ← HTTPS → 后端API(5000) ← → MySQL
+                      ↓
+                本地代理(6789) ← 浏览器的HTTP请求
+                      ↓
+                本地文件系统
+```
+
+### 11.3 数据库设计
+```sql
+Computers        -- 电脑表
+├── Id (int, PK)
+├── Name (varchar 100)       -- 用户自定义名称
+├── HostName (varchar 255)    -- 主机名，用于自动识别
+├── IsOnline (bool)          -- 在线状态
+├── LastHeartbeat (datetime) -- 最后心跳时间
+└── CreatedAt (datetime)
+
+ResourcePaths     -- 资源路径表
+├── Id (int, PK)
+├── ComputerId (int, FK)
+├── Type (varchar 50)        -- comic/video/novel/image
+├── Path (varchar 1000)      -- 资源根目录路径
+├── IsEnabled (bool)
+└── CreatedAt (datetime)
+
+Comics             -- 漫画表
+├── Id (int, PK)
+├── ResourcePathId (int, FK)
+├── FolderName (varchar 255)  -- 文件夹原始名称
+├── DisplayName (varchar 255) -- 显示名称
+├── Type (varchar 50)         -- manga/comic/novel/picture
+├── ThumbnailBase64 (mediumtext) -- 封面图Base64
+├── CreatedAt (datetime)
+└── UpdatedAt (datetime)
+
+ComicChapters      -- 漫画章节表
+├── Id (int, PK)
+├── ComicId (int, FK)
+├── FolderName (varchar 255)
+├── DisplayName (varchar 255)
+├── SortOrder (int)
+└── CreatedAt (datetime)
+```
+
+### 11.4 API接口
+```
+GET  /api/computers/current     -- 获取当前电脑（自动识别）
+GET  /api/computers             -- 获取所有电脑
+POST /api/computers             -- 创建电脑
+PUT  /api/computers/{id}        -- 更新电脑
+POST /api/computers/{id}/heartbeat -- 发送心跳
+
+GET/POST   /api/resource-paths          -- 资源路径CRUD
+GET/PUT/DELETE /api/resource-paths/{id}
+
+GET/POST   /api/comics                  -- 漫画CRUD
+GET/PUT    /api/comics/{id}
+DELETE     /api/comics/{id}
+POST       /api/comics/{id}/thumbnail   -- 上传封面
+POST       /api/comics/scan             -- 扫描文件夹
+GET        /api/comics/{id}/chapters    -- 获取章节
+
+GET/PUT/DELETE /api/chapters/{id}       -- 章节CRUD
+GET            /api/chapters/{id}/pages  -- 获取页面
+```
+
+### 11.5 开发进度
+- [x] 后端API开发 ✅ (2026-04-14)
+- [x] 本地代理服务开发 ✅ (2026-04-14)
+- [x] 前端开发 ✅ (2026-04-14)
+
+**最后更新**: 2026-04-14
+

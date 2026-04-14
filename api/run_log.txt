@@ -1,0 +1,18 @@
+﻿从 C:\Users\22618\Desktop\AI Claw\api\Properties\launchSettings.json 使用启动设置...
+正在生成...
+info: Program[0]
+      ✓ ResourcePaths 表检查完成
+info: Program[0]
+      ✓ Comics 表检查完成
+info: Program[0]
+      ✓ ComicChapters 表检查完成
+info: Program[0]
+      ✓ 数据库表结构检查完成
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://0.0.0.0:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\22618\Desktop\AI Claw\api

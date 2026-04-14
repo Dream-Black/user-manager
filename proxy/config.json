@@ -1,0 +1,21 @@
+{
+  "port": 6789,
+  "host": "0.0.0.0",
+  "allowed_paths": [
+    "C:\\Users\\22618\\Desktop\\manhua",
+    "C:\\Users\\22618\\Desktop\\manhua\\",
+    "C:/Users/22618/Desktop/manhua/",
+    "C:/Users/22618/Desktop/manhua"
+  ],
+  "max_file_size": 52428800,
+  "image_extensions": [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".webp",
+    ".bmp"
+  ],
+  "auto_start": false,
+  "log_level": "INFO"
+}

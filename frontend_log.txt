@@ -1,0 +1,25 @@
+﻿
+> projecthub@0.0.0 dev
+> vite
+
+Port 3000 is in use, trying another one...
+Port 3001 is in use, trying another one...
+
+  [32m[1mVITE[22m v8.0.8[39m  [2mready in [0m[1m227[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m3002[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://172.26.112.1:[1m3002[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.3.7:[1m3002[22m/[39m
+node.exe : [2m21:53:22[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/gantt?days=60[39m
+所在位置 C:\nvm4w\nodejs\npm.ps1:16 字符: 5
++     & "$basedir/node$exe"  "$basedir/node_modules/npm/bin/npm-cli.js" ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([2m21:53:22[2...tt?days=60[39m:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m21:59:28[22m [36m[1m[vite][22m[39m [32mvite.config.js changed, restarting server...[39m
+Port 3001 is in use, trying another one...
+[2m21:59:28[22m [36m[1m[vite][22m[39m server restarted.

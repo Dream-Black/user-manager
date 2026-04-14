@@ -128,6 +128,11 @@ const navGroups = ref([
     title: '内容管理',
     items: [
       { 
+        path: '/resources', 
+        title: '资源管理', 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-7-2h2v-4h4v-2h-4V7h-2v4H8v2h4z" stroke="currentColor" stroke-width="2"/></svg>'
+      },
+      { 
         path: '/categories', 
         title: '分类管理', 
         icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'

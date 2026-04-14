@@ -19,6 +19,12 @@ public class AppDbContext : DbContext
     public DbSet<TaskCategory> TaskCategories => Set<TaskCategory>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
 
+    // 资源管理模块
+    public DbSet<Computer> Computers => Set<Computer>();
+    public DbSet<ResourcePath> ResourcePaths => Set<ResourcePath>();
+    public DbSet<Comic> Comics => Set<Comic>();
+    public DbSet<ComicChapter> ComicChapters => Set<ComicChapter>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -124,5 +130,50 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<UserSettings>().HasData(
             new UserSettings { Id = 1 }
         );
+
+        // ===== 资源管理模块配置 =====
+
+        // Computer 配置
+        modelBuilder.Entity<Computer>(entity =>
+        {
+            entity.HasIndex(e => e.HostName).IsUnique();
+            entity.HasIndex(e => e.Name);
+        });
+
+        // ResourcePath 配置
+        modelBuilder.Entity<ResourcePath>(entity =>
+        {
+            entity.HasIndex(e => e.ComputerId);
+            entity.HasIndex(e => new { e.ComputerId, e.Type }).IsUnique();
+
+            entity.HasOne(r => r.Computer)
+                  .WithMany(c => c.ResourcePaths)
+                  .HasForeignKey(r => r.ComputerId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Comic 配置
+        modelBuilder.Entity<Comic>(entity =>
+        {
+            entity.HasIndex(e => e.ResourcePathId);
+            entity.HasIndex(e => e.DisplayName);
+
+            entity.HasOne(c => c.ResourcePath)
+                  .WithMany(r => r.Comics)
+                  .HasForeignKey(c => c.ResourcePathId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ComicChapter 配置
+        modelBuilder.Entity<ComicChapter>(entity =>
+        {
+            entity.HasIndex(e => e.ComicId);
+            entity.HasIndex(e => new { e.ComicId, e.SortOrder }).IsUnique();
+
+            entity.HasOne(c => c.Comic)
+                  .WithMany(m => m.Chapters)
+                  .HasForeignKey(c => c.ComicId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }

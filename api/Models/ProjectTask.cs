@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace ProjectHub.Api.Models;
 
@@ -59,6 +60,7 @@ public class ProjectTask
 
     // 导航属性
     [ForeignKey("ProjectId")]
+    [JsonIgnore] // 避免 Swagger 循环引用
     public virtual Project? Project { get; set; }
     public virtual ICollection<TaskTimeline> TaskTimelines { get; set; } = new List<TaskTimeline>();
     public virtual ICollection<TaskDelay> Delays { get; set; } = new List<TaskDelay>();
