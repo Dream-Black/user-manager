@@ -49,7 +49,6 @@
           <span class="nav-indicator"></span>
           <span class="nav-icon" v-html="item.icon"></span>
           <span v-if="!isCollapsed" class="nav-text">{{ item.title }}</span>
-          <span v-if="!isCollapsed && item.badge" class="nav-badge">{{ item.badge }}</span>
         </router-link>
       </div>
     </nav>
@@ -106,14 +105,12 @@ const navGroups = ref([
       { 
         path: '/projects', 
         title: '项目管理', 
-        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-        badge: '8'
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
       },
       { 
         path: '/tasks', 
         title: '任务中心', 
-        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-        badge: '12'
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
       },
       { 
         path: '/timeline', 
@@ -137,9 +134,8 @@ const navGroups = ref([
       },
       { 
         path: '/review', 
-        title: '审核中心', 
-        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-        badge: '3'
+        title: '复盘总结', 
+        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
       },
     ]
   },
@@ -386,16 +382,6 @@ if (savedCollapsed !== null) {
 .nav-text {
   font-size: var(--font-size-sm);
   flex: 1;
-}
-
-.nav-badge {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  background: var(--gradient-primary);
-  color: white;
-  animation: badgePulse 2s ease-in-out infinite;
 }
 
 /* 底部 */

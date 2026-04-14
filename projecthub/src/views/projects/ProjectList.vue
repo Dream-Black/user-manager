@@ -7,7 +7,7 @@
           <h1 class="page-title">项目管理</h1>
           <p class="page-subtitle">管理您的所有项目，随时掌握进度</p>
         </div>
-        <button class="btn btn-primary" @click="showCreateModal = true">
+        <button class="btn btn-primary" @click="showCreateDialog = true">
           <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
             <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -44,12 +44,12 @@
         <input v-model="searchQuery" type="text" placeholder="搜索项目..." class="filter-input" />
       </div>
       <div class="filter-actions">
-        <select v-model="filterStatus" class="filter-select">
-          <option value="">全部状态</option>
-          <option value="active">进行中</option>
-          <option value="completed">已完成</option>
-          <option value="paused">已暂停</option>
-        </select>
+        <t-select v-model="filterStatus" placeholder="筛选状态" clearable style="width: 140px">
+          <t-option value="" label="全部状态" />
+          <t-option value="in_progress" label="进行中" />
+          <t-option value="completed" label="已完成" />
+          <t-option value="overdue" label="已延期" />
+        </t-select>
         <div class="view-toggle">
           <button class="view-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" title="网格视图">
             <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
@@ -77,7 +77,9 @@
           <div class="project-icon" :style="{ background: project.color }">
             {{ project.name.charAt(0) }}
           </div>
-          <span class="project-status" :class="project.status">{{ project.statusText }}</span>
+          <t-tag :theme="project.status === 'completed' ? 'success' : project.status === 'overdue' ? 'danger' : 'primary'" variant="light">
+            {{ project.statusText }}
+          </t-tag>
         </div>
         <h3 class="project-name">{{ project.name }}</h3>
         <p class="project-desc">{{ project.description }}</p>
@@ -97,17 +99,11 @@
             </svg>
             {{ project.tasks }} 任务
           </div>
-          <div class="project-team">
-            <div v-for="(member, idx) in project.members.slice(0, 3)" :key="idx" class="team-avatar">
-              {{ member.charAt(0) }}
-            </div>
-            <span v-if="project.members.length > 3" class="team-more">+{{ project.members.length - 3 }}</span>
-          </div>
         </div>
       </div>
 
       <!-- 新建项目卡片 -->
-      <div class="project-card new-project" @click="showCreateModal = true">
+      <div class="project-card new-project" @click="showCreateDialog = true">
         <div class="new-project-content">
           <div class="new-project-icon">
             <svg viewBox="0 0 24 24" fill="none" width="32" height="32">
@@ -128,7 +124,6 @@
             <th>状态</th>
             <th>进度</th>
             <th>任务</th>
-            <th>团队</th>
             <th>截止日期</th>
             <th>操作</th>
           </tr>
@@ -147,7 +142,9 @@
               </div>
             </td>
             <td>
-              <span class="project-status" :class="project.status">{{ project.statusText }}</span>
+              <t-tag :theme="project.status === 'completed' ? 'success' : project.status === 'overdue' ? 'danger' : 'primary'" variant="light">
+                {{ project.statusText }}
+              </t-tag>
             </td>
             <td>
               <div class="table-progress">
@@ -158,13 +155,6 @@
               </div>
             </td>
             <td>{{ project.tasks }}</td>
-            <td>
-              <div class="team-avatars">
-                <div v-for="(member, idx) in project.members.slice(0, 3)" :key="idx" class="team-avatar-sm">
-                  {{ member.charAt(0) }}
-                </div>
-              </div>
-            </td>
             <td>{{ project.dueDate }}</td>
             <td>
               <div class="action-btns">
@@ -202,19 +192,81 @@
       <h3 class="empty-title">未找到匹配的项目</h3>
       <p class="empty-description">请尝试调整筛选条件或搜索关键字</p>
     </div>
+
+    <!-- 新建项目弹窗 -->
+    <t-dialog v-model:visible="showCreateDialog" header="创建新项目" :footer="false" width="500px" @close="showCreateDialog = false">
+      <t-form :model="createForm" :rules="createRules" ref="formRef" @submit="handleCreate" label-width="100px">
+        <t-form-item label="项目名称" name="name">
+          <t-input v-model="createForm.name" placeholder="请输入项目名称" />
+        </t-form-item>
+        <t-form-item label="项目描述" name="description">
+          <t-textarea v-model="createForm.description" placeholder="请输入项目描述" :rows="3" />
+        </t-form-item>
+        <t-form-item label="项目类型" name="type">
+          <t-radio-group v-model="createForm.type">
+            <t-radio value="web">Web应用</t-radio>
+            <t-radio value="mobile">移动应用</t-radio>
+            <t-radio value="desktop">桌面应用</t-radio>
+            <t-radio value="ai">AI项目</t-radio>
+            <t-radio value="other">其他</t-radio>
+          </t-radio-group>
+        </t-form-item>
+        <t-form-item style="margin-top: 24px">
+          <t-button type="submit" theme="primary" :loading="saving">创建项目</t-button>
+          <t-button variant="outline" style="margin-left: 12px" @click="showCreateDialog = false">取消</t-button>
+        </t-form-item>
+      </t-form>
+    </t-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { projectService } from '@/services/dataService'
+import { MessagePlugin } from 'tdesign-vue-next'
 import dayjs from 'dayjs'
+
+const router = useRouter()
 
 const searchQuery = ref('')
 const filterStatus = ref('')
 const viewMode = ref('grid')
-const showCreateModal = ref(false)
 const loading = ref(false)
+
+// 新建项目弹窗
+const showCreateDialog = ref(false)
+const saving = ref(false)
+const formRef = ref(null)
+const createForm = ref({
+  name: '',
+  description: '',
+  type: 'web'
+})
+const createRules = {
+  name: [{ required: true, message: '请输入项目名称', trigger: 'input' }]
+}
+
+// 创建项目
+const handleCreate = async () => {
+  saving.value = true
+  try {
+    const res = await projectService.create({
+      name: createForm.value.name,
+      description: createForm.value.description,
+      type: createForm.value.type
+    })
+    showCreateDialog.value = false
+    createForm.value = { name: '', description: '', type: 'web' }
+    await loadProjects()
+    MessagePlugin.success('项目创建成功')
+  } catch (error) {
+    console.error('创建项目失败:', error)
+    MessagePlugin.error('创建失败，请重试')
+  } finally {
+    saving.value = false
+  }
+}
 
 // 项目颜色映射
 const projectColors = [
@@ -234,13 +286,11 @@ const completedProjects = computed(() => projects.value.filter(p => p.status ===
 // 状态文本映射
 const getStatusText = (status) => {
   const map = {
-    'active': '进行中',
     'in_progress': '进行中',
     'completed': '已完成',
-    'paused': '已暂停',
-    'archived': '已归档'
+    'overdue': '已延期'
   }
-  return map[status] || '进行中'
+  return map[status] || status
 }
 
 // 加载项目数据
@@ -248,7 +298,6 @@ const loadProjects = async () => {
   loading.value = true
   try {
     const data = await projectService.getAll({
-      type: filterStatus.value || undefined,
       status: filterStatus.value || undefined,
       search: searchQuery.value || undefined
     })
@@ -262,7 +311,6 @@ const loadProjects = async () => {
       progress: p.progress || 0,
       tasks: p.taskCount || p.tasks?.length || 0,
       completedTasks: p.completedTaskCount || 0,
-      members: ['成员1', '成员2'], // 后端暂无成员数据
       dueDate: p.completedAt ? dayjs(p.completedAt).format('YYYY-MM-DD') : '未设置',
       color: projectColors[index % projectColors.length],
       createdAt: p.createdAt,

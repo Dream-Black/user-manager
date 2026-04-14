@@ -36,6 +36,15 @@ public class Project
     /// <summary>完成时间</summary>
     public DateTime? CompletedAt { get; set; }
 
+    /// <summary>开始日期</summary>
+    public DateTime? StartDate { get; set; }
+
+    /// <summary>截止日期</summary>
+    public DateTime? EndDate { get; set; }
+
+    /// <summary>分类ID</summary>
+    public int? CategoryId { get; set; }
+
     // 导航属性
     public virtual ICollection<ProjectTask> Tasks { get; set; } = new List<ProjectTask>();
     public virtual ICollection<Review> Reviews { get; set; } = new List<Review>();

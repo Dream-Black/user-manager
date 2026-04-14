@@ -1,14 +1,23 @@
 <template>
-  <div class="project-detail-page">
-    <!-- 新建项目表单 -->
-    <div v-if="isNewMode" class="project-form">
-      <div class="form-header">
-        <h2>创建新项目</h2>
-        <t-button variant="text" @click="goBack">
-          <template #icon><ArrowLeftIcon /></template>
-          返回
-        </t-button>
+  <div class="projects-page">
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <div class="header-content">
+        <div>
+          <h1 class="page-title">{{ isNewMode ? '创建新项目' : '项目详情' }}</h1>
+          <p class="page-subtitle">{{ isNewMode ? '填写项目基本信息' : project?.name }}</p>
+        </div>
+        <div class="header-actions">
+          <t-button variant="outline" @click="goBack">
+            <template #icon><ArrowLeftIcon /></template>
+            返回
+          </t-button>
+        </div>
       </div>
+    </div>
+
+    <!-- 创建项目表单 -->
+    <div v-if="isNewMode" class="project-form">
 
       <t-form :model="formData" :rules="formRules" ref="formRef" label-width="100px">
         <t-form-item label="项目名称" name="name">
@@ -27,20 +36,6 @@
             <t-option value="ai" label="AI项目" />
             <t-option value="other" label="其他" />
           </t-select>
-        </t-form-item>
-
-        <t-form-item label="分类" name="categoryId">
-          <t-select v-model="formData.categoryId" placeholder="请选择分类" style="max-width: 200px">
-            <t-option v-for="cat in categories" :key="cat.id" :value="cat.id" :label="cat.name" />
-          </t-select>
-        </t-form-item>
-
-        <t-form-item label="开始日期" name="startDate">
-          <t-date-picker v-model="formData.startDate" style="max-width: 200px" />
-        </t-form-item>
-
-        <t-form-item label="截止日期" name="endDate">
-          <t-date-picker v-model="formData.endDate" style="max-width: 200px" />
         </t-form-item>
 
         <t-form-item>
@@ -102,10 +97,6 @@
           <span class="stat-label">已完成</span>
         </div>
         <div class="stat-item">
-          <span class="stat-value">{{ stats.members }}</span>
-          <span class="stat-label">成员</span>
-        </div>
-        <div class="stat-item">
           <span class="stat-value">{{ stats.daysLeft }}</span>
           <span class="stat-label">剩余天数</span>
         </div>
@@ -135,63 +126,36 @@
             <t-empty v-if="filteredTasks.length === 0" description="暂无任务，点击上方添加" />
 
             <!-- 任务列表 -->
-            <t-table v-else :data="filteredTasks" row-key="id" hover stripe>
-              <t-table-column title="任务" width="35%">
-                <template #default="{ row }">
-                  <div class="task-cell">
-                    <t-checkbox :checked="row.status === 'completed'" @change="() => toggleTaskStatus(row)" />
-                    <span :class="{ completed: row.status === 'completed' }">{{ row.title }}</span>
-                  </div>
-                </template>
-              </t-table-column>
-              <t-table-column title="负责人" width="15%">
-                <template #default="{ row }">
-                  <div class="assignee-cell">
-                    <div class="avatar" :style="{ background: row.assigneeColor || '#2196F3' }">{{ (row.assigneeName || '未分配').charAt(0) }}</div>
-                    {{ row.assigneeName || '未分配' }}
-                  </div>
-                </template>
-              </t-table-column>
-              <t-table-column title="优先级" width="12%">
-                <template #default="{ row }">
-                  <t-tag :type="getPriorityType(row.priority)" variant="light" size="small">{{ row.priorityText || row.priority }}</t-tag>
-                </template>
-              </t-table-column>
-              <t-table-column title="截止日期" width="15%">
-                <template #default="{ row }">
-                  <span :class="{ overdue: isOverdue(row.planEndDate) }">{{ row.planEndDate || '-' }}</span>
-                </template>
-              </t-table-column>
-              <t-table-column title="状态" width="12%">
-                <template #default="{ row }">
-                  <t-tag :type="getStatusType(row.status)" variant="light">{{ row.statusText }}</t-tag>
-                </template>
-              </t-table-column>
-              <t-table-column title="操作" width="10%" align="center">
-                <template #default="{ row }">
-                  <t-button variant="text" size="small" @click="editTask(row)"><EditIcon /></t-button>
-                  <t-button variant="text" size="small" @click="deleteTask(row.id)"><DeleteIcon /></t-button>
-                </template>
-              </t-table-column>
+            <t-table v-else :data="filteredTasks" :columns="tableColumns" row-key="id" hover stripe>
+              <template #title="{ row }">
+                <div class="task-cell">
+                  <t-checkbox :checked="row.status === 'completed'" @change="() => toggleTaskStatus(row)" />
+                  <span :class="{ completed: row.status === 'completed' }">{{ row.title }}</span>
+                </div>
+              </template>
+              <template #assigneeName="{ row }">
+                <div class="assignee-cell">
+                  <div class="avatar" :style="{ background: row.assigneeColor || '#2196F3' }">{{ (row.assigneeName || '未分配').charAt(0) }}</div>
+                  {{ row.assigneeName || '未分配' }}
+                </div>
+              </template>
+              <template #priority="{ row }">
+                <t-tag :type="getPriorityType(row.priority)" variant="light" size="small">{{ row.priorityText || row.priority }}</t-tag>
+              </template>
+              <template #planEndDate="{ row }">
+                <span :class="{ overdue: isOverdue(row.planEndDate) }">{{ row.planEndDate || '-' }}</span>
+              </template>
+              <template #status="{ row }">
+                <t-tag :type="getStatusType(row.status)" variant="light">{{ row.statusText }}</t-tag>
+              </template>
+              <template #actions="{ row }">
+                <t-button variant="text" size="small" @click="editTask(row)"><EditIcon /></t-button>
+                <t-button variant="text" size="small" @click="deleteTask(row.id)"><DeleteIcon /></t-button>
+              </template>
             </t-table>
           </div>
         </t-tab-panel>
 
-        <t-tab-panel value="members" label="团队成员">
-          <div class="members-content">
-            <div v-if="members.length === 0" class="empty-tip">
-              <t-empty description="暂无成员" />
-            </div>
-            <div class="member-card" v-for="member in members" :key="member.id">
-              <div class="member-avatar" :style="{ background: member.color || '#2196F3' }">{{ member.name?.charAt(0) || '?' }}</div>
-              <div class="member-info">
-                <span class="member-name">{{ member.name }}</span>
-                <span class="member-role">{{ member.role || '成员' }}</span>
-              </div>
-              <t-tag variant="outline">{{ member.taskCount || 0 }} 任务</t-tag>
-            </div>
-          </div>
-        </t-tab-panel>
       </t-tabs>
     </template>
 
@@ -281,8 +245,6 @@ const saving = ref(false)
 const savingTask = ref(false)
 const project = ref({})
 const tasks = ref([])
-const members = ref([])
-const categories = ref([])
 const activeTab = ref('tasks')
 const formRef = ref(null)
 const taskFormRef = ref(null)
@@ -305,10 +267,7 @@ const taskRules = {
 const formData = ref({
   name: '',
   description: '',
-  type: 'web',
-  categoryId: null,
-  startDate: null,
-  endDate: null
+  type: 'web'
 })
 const formRules = {
   name: [{ required: true, message: '请输入项目名称', trigger: 'blur' }]
@@ -320,6 +279,16 @@ const taskFilter = ref({
   status: null,
   priority: null
 })
+
+// 表格列配置
+const tableColumns = [
+  { colKey: 'title', title: '任务', width: '35%' },
+  { colKey: 'assigneeName', title: '负责人', width: '15%' },
+  { colKey: 'priority', title: '优先级', width: '12%' },
+  { colKey: 'planEndDate', title: '截止日期', width: '15%' },
+  { colKey: 'status', title: '状态', width: '12%' },
+  { colKey: 'actions', title: '操作', width: '10%', align: 'center' }
+]
 
 // 弹窗
 const showAddTaskDialog = ref(false)
@@ -352,7 +321,6 @@ const stats = computed(() => {
     total,
     completed,
     progress,
-    members: members.value.length,
     daysLeft
   }
 })
@@ -360,7 +328,6 @@ const stats = computed(() => {
 // 加载项目数据
 const loadProject = async () => {
   if (isNewMode.value) {
-    await loadCategories()
     return
   }
 
@@ -391,16 +358,6 @@ const loadProject = async () => {
   }
 }
 
-// 加载分类
-const loadCategories = async () => {
-  try {
-    const data = await fetch('http://localhost:5000/api/categories').then(r => r.json())
-    categories.value = Array.isArray(data) ? data : (data.items || [])
-  } catch (error) {
-    console.error('加载分类失败:', error)
-  }
-}
-
 // 创建项目
 const handleCreate = async () => {
   try {
@@ -414,10 +371,7 @@ const handleCreate = async () => {
     const newProject = await projectService.create({
       name: formData.value.name,
       description: formData.value.description,
-      type: formData.value.type,
-      categoryId: formData.value.categoryId,
-      startDate: formData.value.startDate ? dayjs(formData.value.startDate).format('YYYY-MM-DD') : null,
-      endDate: formData.value.endDate ? dayjs(formData.value.endDate).format('YYYY-MM-DD') : null
+      type: formData.value.type
     })
     MessagePlugin.success('项目创建成功')
     router.push(`/projects/${newProject.id}`)
@@ -554,13 +508,40 @@ onMounted(loadProject)
 </script>
 
 <style scoped>
-.project-detail-page { }
-.loading-container { display: flex; justify-content: center; align-items: center; min-height: 400px; }
+/* 页面头部 - 与其他页面保持一致 */
+.page-header {
+  margin-bottom: var(--space-6);
+}
+
+.header-content {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+
+.page-title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.page-subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
 
 /* 表单样式 */
-.project-form { background: var(--bg-container); border-radius: var(--radius-xl); padding: 32px; animation: fadeInUp 0.5s ease; }
-.form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
-.form-header h2 { font-size: 20px; font-weight: 600; color: var(--text-primary); }
+.project-form {
+  background: var(--bg-container);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  animation: fadeInUp 0.5s ease;
+  max-width: 600px;
+}
+
+.loading-container { display: flex; justify-content: center; align-items: center; min-height: 400px; }
 
 /* 头部样式 */
 .project-header { padding: 32px; border-radius: var(--radius-xl); margin-bottom: 24px; animation: fadeInUp 0.5s ease; }
@@ -580,21 +561,13 @@ onMounted(loadProject)
 .stat-bar-fill { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
 
 /* 任务列表 */
-.tasks-content, .members-content, .files-content { padding-top: 20px; }
+.tasks-content { padding-top: 20px; }
 .tasks-filters { display: flex; gap: 12px; margin-bottom: 16px; }
 .task-cell { display: flex; align-items: center; gap: 12px; }
 .task-cell .completed { text-decoration: line-through; color: var(--text-tertiary); }
 .assignee-cell { display: flex; align-items: center; gap: 8px; }
 .avatar { width: 28px; height: 28px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 600; }
 .overdue { color: var(--error-color); }
-
-/* 成员列表 */
-.member-card { display: flex; align-items: center; gap: 16px; padding: 16px; background: var(--bg-page); border-radius: var(--radius-lg); margin-bottom: 12px; }
-.member-avatar { width: 48px; height: 48px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; font-weight: 600; }
-.member-info { flex: 1; }
-.member-name { display: block; font-weight: 600; color: var(--text-primary); }
-.member-role { font-size: 12px; color: var(--text-tertiary); }
-.empty-tip { padding: 40px 0; }
 
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(20px); }
