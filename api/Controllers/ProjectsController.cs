@@ -43,9 +43,6 @@ public class ProjectsController : ControllerBase
                 p.Type,
                 p.Customer,
                 p.Status,
-                p.StartDate,
-                p.EndDate,
-                p.CategoryId,
                 p.CreatedAt,
                 p.UpdatedAt,
                 p.CompletedAt,
@@ -88,9 +85,6 @@ public class ProjectsController : ControllerBase
             Type = request.Type,
             Customer = request.Customer,
             Status = string.IsNullOrEmpty(request.Status) ? "active" : request.Status,
-            StartDate = request.StartDate,
-            EndDate = request.EndDate,
-            CategoryId = request.CategoryId,
             CreatedAt = DateTime.Now,
             UpdatedAt = DateTime.Now
         };
@@ -241,9 +235,6 @@ public class CreateProjectRequest
     public string Type { get; set; } = "web";
     public string? Customer { get; set; }
     public string Status { get; set; } = "in_progress";
-    public DateTime? StartDate { get; set; }
-    public DateTime? EndDate { get; set; }
-    public int? CategoryId { get; set; }
 }
 
 public class UpdateProjectRequest
