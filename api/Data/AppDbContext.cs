@@ -18,6 +18,9 @@ public class AppDbContext : DbContext
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<TaskCategory> TaskCategories => Set<TaskCategory>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
+    
+    // 用户模块
+    public DbSet<User> Users => Set<User>();
 
     // 资源管理模块
     public DbSet<Computer> Computers => Set<Computer>();
@@ -129,6 +132,18 @@ public class AppDbContext : DbContext
         // 种子数据 - 用户设置
         modelBuilder.Entity<UserSettings>().HasData(
             new UserSettings { Id = 1 }
+        );
+
+        // User 配置
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasIndex(e => e.Email).IsUnique();
+            entity.HasIndex(e => e.Name);
+        });
+
+        // 种子数据 - 默认用户
+        modelBuilder.Entity<User>().HasData(
+            new User { Id = 1, Name = "用户", CreatedAt = DateTime.Now, UpdatedAt = DateTime.Now }
         );
 
         // ===== 资源管理模块配置 =====

@@ -52,7 +52,7 @@ public class GanttController : ControllerBase
             })
             .ToListAsync();
 
-        // 构建甘特图数据
+        // 构建甘特图数据，日期转为字符串避免时区问题
         var ganttItems = tasks.Select(t => new
         {
             t.Id,
@@ -60,8 +60,8 @@ public class GanttController : ControllerBase
             t.ProjectId,
             t.ProjectName,
             t.ProjectColor,
-            StartDate = t.PlanStartDate ?? DateTime.Today,
-            EndDate = t.PlanEndDate ?? (t.PlanStartDate?.AddDays(1) ?? DateTime.Today.AddDays(1)),
+            planStartDate = (t.PlanStartDate ?? DateTime.Today).ToString("yyyy-MM-dd"),
+            planEndDate = (t.PlanEndDate ?? (t.PlanStartDate?.AddDays(1) ?? DateTime.Today.AddDays(1))).ToString("yyyy-MM-dd"),
             Duration = t.PlanStartDate.HasValue && t.PlanEndDate.HasValue
                 ? (int)(t.PlanEndDate.Value - t.PlanStartDate.Value).TotalDays + 1
                 : 1,
@@ -73,8 +73,8 @@ public class GanttController : ControllerBase
 
         return Ok(new
         {
-            startDate = start,
-            endDate = end,
+            startDate = start.ToString("yyyy-MM-dd"),
+            endDate = end.ToString("yyyy-MM-dd"),
             totalDays = days,
             items = ganttItems
         });

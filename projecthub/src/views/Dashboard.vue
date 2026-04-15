@@ -167,7 +167,7 @@
               </div>
               <div class="project-progress">
                 <div class="progress-bar">
-                  <div class="progress-fill" :style="{ width: `${project.progress}%` }"></div>
+                  <div class="progress-fill" :class="{ completed: project.progress === 100 }" :style="{ width: `${project.progress}%` }"></div>
                 </div>
                 <span class="progress-text">{{ project.progress }}%</span>
               </div>
@@ -993,7 +993,11 @@ onMounted(() => {
   height: 100%;
   background: var(--gradient-primary);
   border-radius: var(--radius-full);
-  transition: width 0.8s ease;
+  transition: width 0.8s ease, background 0.3s ease;
+}
+
+.progress-fill.completed {
+  background: linear-gradient(90deg, #10B981, #34D399);
 }
 
 .progress-text {

@@ -122,6 +122,30 @@ using (var scope = app.Services.CreateScope())
         command.ExecuteNonQuery();
         logger.LogInformation("✓ ComicChapters 表检查完成");
         
+        // Users 表
+        command.CommandText = @"
+            CREATE TABLE IF NOT EXISTS Users (
+                Id INT AUTO_INCREMENT PRIMARY KEY,
+                Name VARCHAR(100) NOT NULL DEFAULT '用户',
+                Email VARCHAR(200) NULL,
+                Phone VARCHAR(20) NULL,
+                Department VARCHAR(50) NULL,
+                Role VARCHAR(100) NULL,
+                Avatar MEDIUMTEXT NULL,
+                CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE INDEX IX_Users_Email (Email)
+            )";
+        command.ExecuteNonQuery();
+        logger.LogInformation("✓ Users 表检查完成");
+        
+        // 插入默认用户（如果不存在）
+        command.CommandText = @"
+            INSERT IGNORE INTO Users (Id, Name, CreatedAt, UpdatedAt) 
+            VALUES (1, '用户', NOW(), NOW())";
+        command.ExecuteNonQuery();
+        logger.LogInformation("✓ 默认用户检查完成");
+        
         connection.Close();
         logger.LogInformation("✓ 数据库表结构检查完成");
     }

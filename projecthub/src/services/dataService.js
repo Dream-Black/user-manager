@@ -56,12 +56,17 @@ export const projectService = {
 
   // 更新任务
   updateTask: async (taskId, data) => {
-    return api.patch(`/tasks/${taskId}`, data)
+    return api.put(`/projects/tasks/${taskId}`, data)
+  },
+
+  // 更新任务进度
+  updateTaskProgress: async (taskId, progress) => {
+    return api.patch(`/projects/tasks/${taskId}/progress`, { progress })
   },
 
   // 删除任务
   deleteTask: async (taskId) => {
-    return api.delete(`/tasks/${taskId}`)
+    return api.delete(`/projects/tasks/${taskId}`)
   }
 }
 
@@ -90,6 +95,11 @@ export const taskService = {
   // 更新任务
   update: async (id, data) => {
     return api.put(`/tasks/${id}`, data)
+  },
+
+  // 更新任务进度
+  updateProgress: async (id, progress) => {
+    return api.patch(`/tasks/${id}`, { progress })
   },
 
   // 删除任务
@@ -142,22 +152,21 @@ export const reviewService = {
   }
 }
 
-// ============ 分类相关 ============
-export const categoryService = {
-  getAll: async () => {
-    return api.get('/categories')
+// ============ 用户相关 ============
+export const userService = {
+  // 获取当前用户信息
+  getCurrent: async () => {
+    return api.get('/users/current')
   },
 
-  create: async (data) => {
-    return api.post('/categories', data)
+  // 更新用户信息
+  update: async (data) => {
+    return api.put('/users/current', data)
   },
 
-  update: async (id, data) => {
-    return api.put(`/categories/${id}`, data)
-  },
-
-  delete: async (id) => {
-    return api.delete(`/categories/${id}`)
+  // 上传头像
+  uploadAvatar: async (base64) => {
+    return api.post('/users/current/avatar', { avatar: base64 })
   }
 }
 

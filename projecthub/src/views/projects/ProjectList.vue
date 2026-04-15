@@ -89,7 +89,7 @@
             <span class="progress-percent">{{ project.progress }}%</span>
           </div>
           <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: `${project.progress}%` }"></div>
+            <div class="progress-fill" :class="{ completed: project.progress === 100 }" :style="{ width: `${project.progress}%` }"></div>
           </div>
         </div>
         <div class="project-footer">
@@ -149,7 +149,7 @@
             <td>
               <div class="table-progress">
                 <div class="progress-bar-sm">
-                  <div class="progress-fill-sm" :style="{ width: `${project.progress}%` }"></div>
+                  <div class="progress-fill-sm" :class="{ completed: project.progress === 100 }" :style="{ width: `${project.progress}%` }"></div>
                 </div>
                 <span>{{ project.progress }}%</span>
               </div>
@@ -311,7 +311,7 @@ const loadProjects = async () => {
       progress: p.progress || 0,
       tasks: p.taskCount || p.tasks?.length || 0,
       completedTasks: p.completedTaskCount || 0,
-      dueDate: p.completedAt ? dayjs(p.completedAt).format('YYYY-MM-DD') : '未设置',
+      dueDate: p.completedAt ? dayjs(p.completedAt).format('YYYY年MM月DD日') : '未设置',
       color: projectColors[index % projectColors.length],
       createdAt: p.createdAt,
       updatedAt: p.updatedAt
@@ -660,7 +660,11 @@ onMounted(() => {
   height: 100%;
   background: var(--gradient-primary);
   border-radius: var(--radius-full);
-  transition: width 0.8s ease;
+  transition: width 0.8s ease, background 0.3s ease;
+}
+
+.progress-fill.completed {
+  background: linear-gradient(90deg, #10B981, #34D399);
 }
 
 .project-footer {
@@ -848,6 +852,11 @@ onMounted(() => {
   height: 100%;
   background: var(--gradient-primary);
   border-radius: var(--radius-full);
+  transition: width 0.8s ease, background 0.3s ease;
+}
+
+.progress-fill-sm.completed {
+  background: linear-gradient(90deg, #10B981, #34D399);
 }
 
 .team-avatars {

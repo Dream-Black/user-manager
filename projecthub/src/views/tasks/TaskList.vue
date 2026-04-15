@@ -98,7 +98,11 @@
           v-for="column in boardColumns"
           :key="column.key"
           class="board-column"
+          :class="{ 'drop-target': draggedTask && dragOverColumn === column.key }"
           :style="{ '--column-color': column.color }"
+          @dragover.prevent="dragOverColumn = column.key"
+          @dragleave="dragOverColumn = null"
+          @drop="handleDrop($event, column.key)"
         >
           <div class="column-header">
             <div class="column-title">
@@ -113,7 +117,9 @@
               v-for="(task, index) in getColumnTasks(column.key)"
               :key="task.id"
               class="task-card"
+              :data-task-id="task.id"
               :style="{ animationDelay: `${index * 0.05}s` }"
+              :class="{ 'is-dragging': draggedTask?.id === task.id }"
               draggable="true"
               @dragstart="handleDragStart($event, task)"
               @dragover.prevent
@@ -154,16 +160,29 @@
                 </div>
               </div>
 
+              <div class="task-progress-bar" @click.stop>
+                <div
+                  class="task-progress-fill"
+                  :style="{ width: task.progress + '%' }"
+                  :class="{ dragging: draggingProgressTask?.id === task.id, completed: task.progress === 100 }"
+                ></div>
+                <div
+                  class="progress-handle"
+                  :style="{ left: task.progress + '%' }"
+                  :class="{ active: draggingProgressTask?.id === task.id }"
+                  @mousedown.stop="startProgressDrag($event, task)"
+                ></div>
+              </div>
+              <div class="task-progress-text" @click.stop>{{ task.progress }}%</div>
+
               <div class="task-footer">
-                <div class="task-assignee">
-                  <div class="assignee-avatar" :style="{ background: task.assigneeColor }">
-                    {{ task.assignee.charAt(0) }}
-                  </div>
-                  <span>{{ task.assignee }}</span>
+                <div class="task-category">
+                  <t-tag :type="getCategoryType(task.categoryName)" variant="light" size="small">
+                    {{ getCategoryText(task.categoryName) }}
+                  </t-tag>
                 </div>
-                <div class="task-subtasks">
-                  <CheckIcon />
-                  {{ task.subtaskCompleted }}/{{ task.subtaskTotal }}
+                <div class="task-hours">
+                  {{ task.estimatedHours ? task.estimatedHours + 'h' : '-' }}
                 </div>
               </div>
             </div>
@@ -211,25 +230,39 @@
             </t-tag>
           </template>
 
+          <template #categoryName="{ row }">
+            <t-tag :type="getCategoryType(row.categoryName)" variant="light" size="small">
+              {{ getCategoryText(row.categoryName) }}
+            </t-tag>
+          </template>
+
           <template #priority="{ row }">
             <t-tag :type="getPriorityType(row.priority)" variant="light">
               {{ row.priorityText }}
             </t-tag>
           </template>
 
+          <template #progress="{ row }">
+            <div class="progress-cell">
+                <div class="progress-bar-sm">
+                <div class="progress-fill" :class="{ completed: row.progress === 100 }" :style="{ width: row.progress + '%' }"></div>
+              </div>
+              <span>{{ row.progress }}%</span>
+            </div>
+          </template>
+
+          <template #estimatedHours="{ row }">
+            {{ row.estimatedHours ? row.estimatedHours + 'h' : '-' }}
+          </template>
+
+          <template #startDate="{ row }">
+            <span>{{ row.startDate ? formatDate(row.startDate) : '-' }}</span>
+          </template>
+
           <template #dueDate="{ row }">
             <span :class="{ overdue: isOverdue(row.dueDate) && row.status !== 'completed' }">
               {{ row.dueDate }}
             </span>
-          </template>
-
-          <template #assignee="{ row }">
-            <div class="assignee-cell">
-              <div class="assignee-avatar-sm" :style="{ background: row.assigneeColor }">
-                {{ row.assignee.charAt(0) }}
-              </div>
-              {{ row.assignee }}
-            </div>
           </template>
 
           <template #actions="{ row }">
@@ -324,7 +357,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 
 // 状态
@@ -339,6 +372,10 @@ const editingTask = ref(null)
 const deletingTask = ref(null)
 const formRef = ref(null)
 const draggedTask = ref(null)
+const dragOverColumn = ref(null)
+const draggingProgressTask = ref(null)
+const progressDragStartX = ref(0)
+const progressDragStartValue = ref(0)
 
 // 分页
 const pagination = ref({
@@ -349,12 +386,14 @@ const pagination = ref({
 
 // 表格列
 const columns = [
-  { colKey: 'title', title: '任务', width: '35%' },
-  { colKey: 'status', title: '状态', width: '12%' },
-  { colKey: 'priority', title: '优先级', width: '12%' },
-  { colKey: 'project', title: '项目', width: '15%' },
-  { colKey: 'dueDate', title: '截止日期', width: '12%' },
-  { colKey: 'assignee', title: '负责人', width: '10%' },
+  { colKey: 'title', title: '任务', width: '25%' },
+  { colKey: 'categoryName', title: '分类', width: '10%' },
+  { colKey: 'status', title: '状态', width: '10%' },
+  { colKey: 'priority', title: '优先级', width: '10%' },
+  { colKey: 'progress', title: '进度', width: '15%' },
+  { colKey: 'estimatedHours', title: '预估工时', width: '10%' },
+  { colKey: 'startDate', title: '开始日期', width: '10%' },
+  { colKey: 'dueDate', title: '截止日期', width: '10%' },
   { colKey: 'actions', title: '操作', width: '8%', align: 'center' }
 ]
 
@@ -399,7 +438,7 @@ const loadTasks = async () => {
       projectColor: '#2196F3',
       assignee: '未分配',
       assigneeColor: '#9CA3AF',
-      dueDate: t.dueDate ? dayjs(t.dueDate).format('YYYY-MM-DD') : '未设置',
+      dueDate: t.dueDate ? dayjs(t.dueDate).format('YYYY年MM月DD日') : '未设置',
       startDate: t.startDate,
       progress: t.progress || 0,
       estimatedHours: t.estimatedHours || 0,
@@ -464,6 +503,37 @@ const getPriorityText = (priority) => {
     'low': '低'
   }
   return map[priority] || '中'
+}
+
+// 获取分类文本
+const getCategoryText = (category) => {
+  const map = {
+    'dev': '开发',
+    'meeting': '会议',
+    'doc': '文档',
+    'design': '设计',
+    'debug': '调试',
+    'bug': 'BUG'
+  }
+  return map[category] || category || '-'
+}
+
+// 获取分类类型
+const getCategoryType = (category) => {
+  const types = {
+    'dev': 'primary',
+    'meeting': 'warning',
+    'doc': 'success',
+    'design': 'purple',
+    'debug': 'danger',
+    'bug': 'danger'
+  }
+  return types[category] || 'default'
+}
+
+// 格式化日期
+const formatDate = (date) => {
+  return dayjs(date).format('YYYY年MM月DD日')
 }
 
 // 任务统计
@@ -660,19 +730,85 @@ const handleDragStart = (event, task) => {
 }
 
 const handleDrop = async (event, newStatus) => {
+  dragOverColumn.value = null
   if (draggedTask.value) {
+    const task = draggedTask.value
     try {
-      await taskService.update(draggedTask.value.id, {
+      // 如果拖到"已完成"列，自动设置进度为100%
+      const updateData = {
         status: newStatus === 'pending' ? 'todo' : newStatus
-      })
-      draggedTask.value.status = newStatus
-      draggedTask.value.statusText = getStatusText(newStatus)
+      }
+      if (newStatus === 'completed') {
+        updateData.progress = 100
+      }
+      await taskService.update(task.id, updateData)
+      task.status = newStatus
+      task.statusText = getStatusText(newStatus)
+      if (newStatus === 'completed') {
+        task.progress = 100
+        MessagePlugin.success('任务已完成')
+      }
     } catch (error) {
       console.error('更新任务状态失败:', error)
       MessagePlugin.error('更新失败，请重试')
     }
     draggedTask.value = null
   }
+}
+
+// 进度条拖拽
+const startProgressDrag = (event, task) => {
+  event.preventDefault()
+  event.stopPropagation()
+  draggingProgressTask.value = task
+  progressDragStartX.value = event.clientX
+  progressDragStartValue.value = task.progress
+
+  document.addEventListener('mousemove', onProgressDrag)
+  document.addEventListener('mouseup', onProgressDragEnd)
+}
+
+const onProgressDrag = (event) => {
+  if (!draggingProgressTask.value) return
+
+  const task = draggingProgressTask.value
+  const progressBar = document.querySelector(`[data-task-id="${task.id}"] .task-progress-bar`)
+  if (!progressBar) return
+
+  const barRect = progressBar.getBoundingClientRect()
+  const deltaX = event.clientX - progressDragStartX.value
+  const deltaPercent = Math.round((deltaX / barRect.width) * 100)
+  const newProgress = Math.max(0, Math.min(100, progressDragStartValue.value + deltaPercent))
+
+  task.progress = newProgress
+
+  // 如果拖到100%，自动标记为已完成
+  if (newProgress === 100 && task.status !== 'completed') {
+    task.status = 'completed'
+    task.statusText = getStatusText('completed')
+  } else if (newProgress < 100 && task.status === 'completed') {
+    task.status = 'in_progress'
+    task.statusText = getStatusText('in_progress')
+  }
+}
+
+const onProgressDragEnd = async () => {
+  if (!draggingProgressTask.value) return
+
+  const task = draggingProgressTask.value
+  try {
+    await taskService.update(task.id, {
+      progress: task.progress,
+      status: task.status === 'pending' ? 'todo' : task.status
+    })
+  } catch (error) {
+    console.error('更新进度失败:', error)
+    MessagePlugin.error('更新进度失败')
+  }
+
+  draggingProgressTask.value = null
+  document.removeEventListener('mousemove', onProgressDrag)
+  document.removeEventListener('mouseup', onProgressDragEnd)
 }
 
 // 快速添加
@@ -695,6 +831,11 @@ import dayjs from 'dayjs'
 onMounted(() => {
   loadTasks()
   loadProjects()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onProgressDrag)
+  document.removeEventListener('mouseup', onProgressDragEnd)
 })
 </script>
 
@@ -822,7 +963,13 @@ onMounted(() => {
   background: var(--bg-color-secondary);
   border-radius: var(--radius-xl);
   padding: 16px;
-  border: 1px solid var(--border-light);
+  border: 2px solid transparent;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.board-column.drop-target {
+  border-color: var(--column-color);
+  background: color-mix(in srgb, var(--column-color) 8%, var(--bg-color-secondary));
 }
 
 .column-header {
@@ -887,6 +1034,11 @@ onMounted(() => {
   transform: scale(0.98);
 }
 
+.task-card.is-dragging {
+  opacity: 0.5;
+  transform: scale(0.95);
+}
+
 .task-card-header {
   display: flex;
   justify-content: space-between;
@@ -945,10 +1097,79 @@ onMounted(() => {
   height: 12px;
 }
 
+.task-progress-bar {
+  height: 8px;
+  background: var(--bg-color-secondary);
+  border-radius: var(--radius-full);
+  margin-bottom: 4px;
+  overflow: visible;
+  position: relative;
+  cursor: pointer;
+}
+
+.task-progress-fill {
+  height: 100%;
+  background: var(--gradient-primary);
+  border-radius: var(--radius-full);
+  transition: width 0.15s ease, background 0.3s ease;
+}
+
+.task-progress-fill.dragging {
+  transition: none;
+}
+
+.task-progress-fill.completed {
+  background: linear-gradient(90deg, #10B981, #34D399);
+}
+
+.progress-handle {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  background: var(--bg-card-solid);
+  border: 2px solid var(--primary-color);
+  border-radius: var(--radius-full);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 2;
+  box-shadow: var(--shadow-sm);
+}
+
+.task-progress-bar:hover .progress-handle,
+.progress-handle.active {
+  opacity: 1;
+}
+
+.progress-handle.active {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.2);
+  box-shadow: var(--shadow-md);
+}
+
+.task-progress-text {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-align: right;
+  cursor: pointer;
+}
+
 .task-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.task-category {
+  display: flex;
+  align-items: center;
+}
+
+.task-hours {
+  font-size: 12px;
+  color: var(--text-tertiary);
 }
 
 .task-assignee {
@@ -1060,6 +1281,31 @@ onMounted(() => {
   color: white;
   font-size: 10px;
   font-weight: 600;
+}
+
+.progress-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-bar-sm {
+  width: 60px;
+  height: 4px;
+  background: var(--bg-color-secondary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--gradient-primary);
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.progress-fill.completed {
+  background: linear-gradient(90deg, #10B981, #34D399);
 }
 
 .action-buttons {

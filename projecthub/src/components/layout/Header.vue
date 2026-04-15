@@ -49,8 +49,8 @@
       <div class="user-dropdown" @click="showUserMenu = !showUserMenu">
         <img :src="user?.avatar || '/default-avatar.png'" :alt="user?.name" class="user-avatar" />
         <div class="user-info">
-          <span class="user-name">{{ user?.name || '访客用户' }}</span>
-          <span class="user-role">{{ user?.role || '管理员' }}</span>
+          <span class="user-name">{{ user?.name || '加载中...' }}</span>
+          <span class="user-role">{{ user?.role || user?.department || '用户' }}</span>
         </div>
         <svg class="dropdown-arrow" viewBox="0 0 24 24" fill="none" width="16" height="16">
           <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -62,7 +62,7 @@
             <img :src="user?.avatar || '/default-avatar.png'" :alt="user?.name" class="user-avatar-lg" />
             <div>
               <div class="dropdown-user-name">{{ user?.name || '访客用户' }}</div>
-              <div class="dropdown-user-email">{{ user?.email || 'guest@example.com' }}</div>
+              <div class="dropdown-user-email">{{ user?.email || '' }}</div>
             </div>
           </div>
           <div class="dropdown-divider"></div>
@@ -131,20 +131,28 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { userService } from '@/services/dataService'
 
 const router = useRouter()
 
 const searchQuery = ref('')
 const showNotifications = ref(false)
 const showUserMenu = ref(false)
+const user = ref(null)
 
-const user = ref({
-  name: '张三',
-  email: 'zhangsan@example.com',
-  role: '产品经理',
-  avatar: ''
+const fetchUser = async () => {
+  try {
+    const data = await userService.getCurrent()
+    user.value = data
+  } catch (error) {
+    console.error('获取用户信息失败:', error)
+  }
+}
+
+onMounted(() => {
+  fetchUser()
 })
 
 const notifications = ref([

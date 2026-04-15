@@ -49,8 +49,9 @@ public class ProjectsController : ControllerBase
                 TaskCount = p.Tasks.Count,
                 CompletedTaskCount = p.Tasks.Count(t => t.Status == "completed"),
                 // 项目进度 = 所有任务(预估工时 × 进度) 的总和 / 所有任务的预估工时总和
+                // 修复：确保预估工时总和大于0，避免除零错误
                 Progress = p.Tasks.Any()
-                    ? (int)Math.Round(p.Tasks.Sum(t => t.EstimatedHours * t.Progress / 100m) / p.Tasks.Sum(t => t.EstimatedHours) * 100)
+                    ? (int)Math.Round(p.Tasks.Sum(t => t.EstimatedHours * t.Progress / 100m) / Math.Max(p.Tasks.Sum(t => t.EstimatedHours), 1) * 100)
                     : 0
             })
             .ToListAsync();
@@ -171,14 +172,15 @@ public class ProjectsController : ControllerBase
                 t.Id,
                 t.Title,
                 t.Description,
+                t.Category,
                 t.Priority,
                 t.Status,
                 t.Progress,
+                t.EstimatedHours,
                 t.PlanStartDate,
                 t.PlanEndDate,
                 t.ActualStartDate,
                 t.ActualEndDate,
-                t.EstimatedHours,
                 t.CreatedAt,
                 t.UpdatedAt
             })
@@ -200,9 +202,11 @@ public class ProjectsController : ControllerBase
             ProjectId = id,
             Title = request.Title,
             Description = request.Description,
+            Category = request.Category ?? "dev",
             Priority = request.Priority ?? "medium",
             Status = request.Status ?? "todo",
-            Progress = 0,
+            Progress = request.Progress,
+            EstimatedHours = request.EstimatedHours,
             PlanStartDate = request.PlanStartDate,
             PlanEndDate = request.PlanEndDate,
             CreatedAt = DateTime.Now,
@@ -225,6 +229,94 @@ public class ProjectsController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Created($"/api/tasks/{task.Id}", task);
+    }
+
+    /// <summary>更新项目任务</summary>
+    [HttpPut("tasks/{taskId}")]
+    public async Task<IActionResult> UpdateTask(int taskId, [FromBody] UpdateTaskRequest request)
+    {
+        var task = await _context.Tasks.FindAsync(taskId);
+        if (task == null)
+            return NotFound(new { message = "任务不存在" });
+
+        if (request.Title != null) task.Title = request.Title;
+        if (request.Description != null) task.Description = request.Description;
+        if (request.Category != null) task.Category = request.Category;
+        if (request.Priority != null) task.Priority = request.Priority;
+        if (request.Status != null)
+        {
+            task.Status = request.Status;
+            // 如果状态设为完成，进度自动设为100
+            if (request.Status == "completed")
+            {
+                task.Progress = 100;
+                task.ActualEndDate = DateTime.Now;
+            }
+        }
+        if (request.Progress.HasValue)
+        {
+            task.Progress = request.Progress.Value;
+            // 如果进度到100，自动设状态为完成
+            if (request.Progress.Value >= 100 && task.Status != "completed")
+            {
+                task.Status = "completed";
+                task.ActualEndDate = DateTime.Now;
+            }
+            else if (request.Progress.Value < 100 && task.Status == "completed")
+            {
+                task.Status = "in_progress";
+            }
+        }
+        if (request.EstimatedHours.HasValue) task.EstimatedHours = request.EstimatedHours.Value;
+        if (request.PlanStartDate.HasValue) task.PlanStartDate = request.PlanStartDate;
+        if (request.PlanEndDate.HasValue) task.PlanEndDate = request.PlanEndDate;
+
+        task.UpdatedAt = DateTime.Now;
+        await _context.SaveChangesAsync();
+
+        return Ok(task);
+    }
+
+    /// <summary>更新任务进度</summary>
+    [HttpPatch("tasks/{taskId}/progress")]
+    public async Task<IActionResult> UpdateTaskProgress(int taskId, [FromBody] UpdateTaskProgressRequest request)
+    {
+        var task = await _context.Tasks.FindAsync(taskId);
+        if (task == null)
+            return NotFound(new { message = "任务不存在" });
+
+        task.Progress = request.Progress;
+
+        // 进度到100时自动完成
+        if (request.Progress >= 100 && task.Status != "completed")
+        {
+            task.Status = "completed";
+            task.ActualEndDate = DateTime.Now;
+        }
+        // 进度低于100时恢复为进行中
+        else if (request.Progress < 100 && task.Status == "completed")
+        {
+            task.Status = "in_progress";
+        }
+
+        task.UpdatedAt = DateTime.Now;
+        await _context.SaveChangesAsync();
+
+        return Ok(new { task.Id, task.Progress, task.Status });
+    }
+
+    /// <summary>删除任务</summary>
+    [HttpDelete("tasks/{taskId}")]
+    public async Task<IActionResult> DeleteTask(int taskId)
+    {
+        var task = await _context.Tasks.FindAsync(taskId);
+        if (task == null)
+            return NotFound(new { message = "任务不存在" });
+
+        _context.Tasks.Remove(task);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "删除成功" });
     }
 }
 
@@ -250,8 +342,29 @@ public class CreateProjectTaskRequest
 {
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
+    public string? Category { get; set; }
     public string? Priority { get; set; }
     public string? Status { get; set; }
+    public int Progress { get; set; }
+    public decimal EstimatedHours { get; set; }
     public DateTime? PlanStartDate { get; set; }
     public DateTime? PlanEndDate { get; set; }
+}
+
+public class UpdateTaskRequest
+{
+    public string? Title { get; set; }
+    public string? Description { get; set; }
+    public string? Category { get; set; }
+    public string? Priority { get; set; }
+    public string? Status { get; set; }
+    public int? Progress { get; set; }
+    public decimal? EstimatedHours { get; set; }
+    public DateTime? PlanStartDate { get; set; }
+    public DateTime? PlanEndDate { get; set; }
+}
+
+public class UpdateTaskProgressRequest
+{
+    public int Progress { get; set; }
 }

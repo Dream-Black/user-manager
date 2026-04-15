@@ -156,14 +156,14 @@ public class TasksController : ControllerBase
 
     /// <summary>更新任务（PATCH 部分更新）</summary>
     [HttpPatch("{id}")]
-    public async Task<IActionResult> PatchTask(int id, [FromBody] UpdateTaskRequest request)
+    public async Task<IActionResult> PatchTask(int id, [FromBody] UpdateTaskDetailRequest request)
     {
         return await UpdateTask(id, request);
     }
 
     /// <summary>更新任务</summary>
     [HttpPut("{id}")]
-    public async Task<IActionResult> UpdateTask(int id, [FromBody] UpdateTaskRequest request)
+    public async Task<IActionResult> UpdateTask(int id, [FromBody] UpdateTaskDetailRequest request)
     {
         var task = await _context.Tasks.FindAsync(id);
         if (task == null)
@@ -334,7 +334,7 @@ public class CreateTaskRequest
     public DateTime? PlanEndDate { get; set; }
 }
 
-public class UpdateTaskRequest
+public class UpdateTaskDetailRequest
 {
     public string? Title { get; set; }
     public string? Description { get; set; }

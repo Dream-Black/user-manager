@@ -27,27 +27,33 @@
         <!-- 个人信息 -->
         <div v-if="activeSection === 'profile'" class="settings-section">
           <h2 class="section-title">个人信息</h2>
+          
+          <!-- 头像上传 -->
           <div class="avatar-upload">
-            <div class="avatar-preview">
-              <span>P</span>
+            <div class="avatar-preview" :style="avatarStyle">
+              <img v-if="profileForm.avatar" :src="profileForm.avatar" alt="头像" />
+              <span v-else>{{ profileForm.name?.charAt(0) || 'U' }}</span>
             </div>
             <div class="avatar-actions">
-              <t-button variant="outline" size="small">更换头像</t-button>
-              <p class="avatar-hint">支持 JPG、PNG，最大 2MB</p>
+              <t-button variant="outline" size="small" @click="showAvatarCropper = true">
+                <template #icon><UploadIcon /></template>
+                更换头像
+              </t-button>
+              <p class="avatar-hint">支持 JPG、PNG，裁剪为 100×100 像素</p>
             </div>
           </div>
 
-          <t-form :data="profileForm" label-align="top">
-            <t-form-item label="姓名">
+          <t-form ref="profileFormRef" :data="profileForm" :rules="profileRules" label-align="top">
+            <t-form-item label="姓名" name="name">
               <t-input v-model="profileForm.name" placeholder="请输入姓名" />
             </t-form-item>
-            <t-form-item label="邮箱">
+            <t-form-item label="邮箱" name="email">
               <t-input v-model="profileForm.email" placeholder="请输入邮箱" />
             </t-form-item>
-            <t-form-item label="手机号">
+            <t-form-item label="手机号" name="phone">
               <t-input v-model="profileForm.phone" placeholder="请输入手机号" />
             </t-form-item>
-            <t-form-item label="部门">
+            <t-form-item label="部门" name="department">
               <t-select v-model="profileForm.department">
                 <t-option value="tech" label="技术部" />
                 <t-option value="product" label="产品部" />
@@ -55,10 +61,14 @@
                 <t-option value="operation" label="运营部" />
               </t-select>
             </t-form-item>
-            <t-form-item label="职位">
+            <t-form-item label="职位" name="role">
               <t-input v-model="profileForm.role" placeholder="请输入职位" />
             </t-form-item>
           </t-form>
+
+          <div class="section-actions">
+            <t-button theme="primary" :loading="saving" @click="handleSaveProfile">保存修改</t-button>
+          </div>
         </div>
 
         <!-- 账号安全 -->
@@ -76,14 +86,14 @@
               <h4>两步验证</h4>
               <p>启用后登录需要输入手机验证码</p>
             </div>
-            <t-switch v-model="securityForm.twoFactor" />
+            <t-switch v-model="securityForm.twoFactor" @change="handleSecurityChange" />
           </div>
           <div class="security-item">
             <div class="security-info">
               <h4>登录通知</h4>
               <p>在新设备登录时发送邮件通知</p>
             </div>
-            <t-switch v-model="securityForm.loginNotify" />
+            <t-switch v-model="securityForm.loginNotify" @change="handleSecurityChange" />
           </div>
         </div>
 
@@ -97,14 +107,14 @@
                 <span class="notification-label">任务到期提醒</span>
                 <span class="notification-desc">任务到期前发送通知</span>
               </div>
-              <t-switch v-model="notificationForm.taskReminder" />
+              <t-switch v-model="notificationForm.taskReminder" @change="handleNotificationChange" />
             </div>
             <div class="notification-item">
               <div class="notification-info">
                 <span class="notification-label">任务分配通知</span>
                 <span class="notification-desc">被分配新任务时发送通知</span>
               </div>
-              <t-switch v-model="notificationForm.taskAssign" />
+              <t-switch v-model="notificationForm.taskAssign" @change="handleNotificationChange" />
             </div>
           </div>
           <div class="notification-group">
@@ -114,14 +124,14 @@
                 <span class="notification-label">项目更新通知</span>
                 <span class="notification-desc">项目有新动态时发送通知</span>
               </div>
-              <t-switch v-model="notificationForm.projectUpdate" />
+              <t-switch v-model="notificationForm.projectUpdate" @change="handleNotificationChange" />
             </div>
             <div class="notification-item">
               <div class="notification-info">
                 <span class="notification-label">项目周报</span>
                 <span class="notification-desc">每周一发送项目周报</span>
               </div>
-              <t-switch v-model="notificationForm.weeklyReport" />
+              <t-switch v-model="notificationForm.weeklyReport" @change="handleNotificationChange" />
             </div>
           </div>
         </div>
@@ -137,7 +147,7 @@
                 :key="theme.key"
                 class="theme-option"
                 :class="{ active: appearanceForm.theme === theme.key }"
-                @click="appearanceForm.theme = theme.key"
+                @click="setTheme(theme.key)"
               >
                 <div class="theme-preview" :style="{ background: theme.preview }">
                   <CheckIcon v-if="appearanceForm.theme === theme.key" class="check-icon" />
@@ -148,29 +158,32 @@
           </div>
           <div class="density-setting">
             <h4>界面密度</h4>
-            <t-radio-group v-model="appearanceForm.density">
+            <t-radio-group v-model="appearanceForm.density" @change="handleAppearanceChange">
               <t-radio-button value="compact">紧凑</t-radio-button>
               <t-radio-button value="normal">默认</t-radio-button>
               <t-radio-button value="comfortable">宽松</t-radio-button>
             </t-radio-group>
           </div>
         </div>
-
-        <!-- 保存按钮 -->
-        <div class="settings-footer">
-          <t-button theme="primary" @click="handleSave">保存设置</t-button>
-        </div>
       </div>
     </div>
+
+    <!-- 头像裁剪弹窗 -->
+    <AvatarCropper v-model="showAvatarCropper" :output-size="100" @confirm="handleAvatarCrop" />
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { markRaw } from 'vue'
+import AvatarCropper from '@/components/settings/AvatarCropper.vue'
+import { userService } from '@/services/dataService'
 
 const activeSection = ref('profile')
+const profileFormRef = ref(null)
+const showAvatarCropper = ref(false)
+const saving = ref(false)
 
 const settingsSections = [
   { key: 'profile', label: '个人信息', icon: markRaw(UserIcon) },
@@ -185,13 +198,34 @@ const themes = [
   { key: 'auto', label: '自动', preview: 'linear-gradient(135deg, #fff 50%, #1f2937 50%)' }
 ]
 
-const profileForm = ref({
-  name: 'ProjectHub User',
-  email: 'user@projecthub.com',
-  phone: '138****8888',
-  department: 'tech',
-  role: '项目经理'
+// 头像样式
+const avatarStyle = computed(() => {
+  if (profileForm.value.avatar) {
+    return {
+      background: 'transparent',
+      color: 'transparent'
+    }
+  }
+  return {}
 })
+
+// 表单数据
+const profileForm = ref({
+  name: '',
+  email: '',
+  phone: '',
+  department: '',
+  role: '',
+  avatar: ''
+})
+
+const profileRules = {
+  name: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
+  email: [
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
+    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
+  ]
+}
 
 const securityForm = ref({
   twoFactor: false,
@@ -210,12 +244,106 @@ const appearanceForm = ref({
   density: 'normal'
 })
 
-const handleSave = () => {
-  MessagePlugin.success('设置已保存')
+// 加载用户信息
+const loadUserProfile = async () => {
+  try {
+    const user = await userService.getCurrent()
+    profileForm.value = {
+      name: user.name || '',
+      email: user.email || '',
+      phone: user.phone || '',
+      department: user.department || '',
+      role: user.role || '',
+      avatar: user.avatar || ''
+    }
+  } catch (error) {
+    console.error('加载用户信息失败:', error)
+    // 使用默认数据
+    profileForm.value = {
+      name: 'ProjectHub User',
+      email: 'user@projecthub.com',
+      phone: '138****8888',
+      department: 'tech',
+      role: '项目经理',
+      avatar: ''
+    }
+  }
 }
 
+// 保存个人信息
+const handleSaveProfile = async () => {
+  const result = await profileFormRef.value.validate()
+  if (result !== true) return
+
+  saving.value = true
+  try {
+    await userService.update({
+      name: profileForm.value.name,
+      email: profileForm.value.email,
+      phone: profileForm.value.phone,
+      department: profileForm.value.department,
+      role: profileForm.value.role
+    })
+    MessagePlugin.success('个人信息已保存')
+  } catch (error) {
+    console.error('保存失败:', error)
+    MessagePlugin.error('保存失败，请重试')
+  } finally {
+    saving.value = false
+  }
+}
+
+// 头像裁剪完成
+const handleAvatarCrop = async ({ base64 }) => {
+  try {
+    await userService.uploadAvatar(base64)
+    profileForm.value.avatar = base64
+    MessagePlugin.success('头像已更新')
+  } catch (error) {
+    console.error('上传头像失败:', error)
+    MessagePlugin.error('上传失败，请重试')
+  }
+}
+
+// 设置主题
+const setTheme = (theme) => {
+  appearanceForm.value.theme = theme
+  handleAppearanceChange()
+  
+  // 应用主题
+  document.documentElement.setAttribute('theme', theme)
+  localStorage.setItem('theme', theme)
+}
+
+// 设置变更处理
+const handleSecurityChange = () => {
+  // TODO: 调用API保存安全设置
+  MessagePlugin.success('安全设置已保存')
+}
+
+const handleNotificationChange = () => {
+  // TODO: 调用API保存通知设置
+  MessagePlugin.success('通知设置已保存')
+}
+
+const handleAppearanceChange = () => {
+  // 外观设置已在 setTheme 中处理
+}
+
+// 图标
 import { markRaw as vueMarkRaw } from 'vue'
-import { UserIcon, LockOnIcon, NotificationIcon, PaletteIcon, CheckIcon } from 'tdesign-icons-vue-next'
+import { UserIcon, LockOnIcon, NotificationIcon, PaletteIcon, CheckIcon, UploadIcon } from 'tdesign-icons-vue-next'
+
+onMounted(() => {
+  loadUserProfile()
+  
+  // 恢复主题设置
+  const savedTheme = localStorage.getItem('theme')
+  if (savedTheme) {
+    appearanceForm.value.theme = savedTheme
+    document.documentElement.setAttribute('theme', savedTheme)
+  }
+})
 </script>
 
 <style scoped>
@@ -238,8 +366,12 @@ import { UserIcon, LockOnIcon, NotificationIcon, PaletteIcon, CheckIcon } from '
 .section-title { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 0 0 24px 0; }
 
 .avatar-upload { display: flex; align-items: center; gap: 20px; margin-bottom: 24px; }
-.avatar-preview { width: 80px; height: 80px; border-radius: var(--radius-full); background: var(--gradient-primary); display: flex; align-items: center; justify-content: center; color: white; font-size: 28px; font-weight: 600; box-shadow: var(--shadow-glow); }
-.avatar-hint { font-size: 12px; color: var(--text-tertiary); margin: 8px 0 0 0; }
+.avatar-preview { width: 80px; height: 80px; border-radius: var(--radius-full); background: var(--gradient-primary); display: flex; align-items: center; justify-content: center; color: white; font-size: 28px; font-weight: 600; box-shadow: var(--shadow-glow); overflow: hidden; flex-shrink: 0; }
+.avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-actions { display: flex; flex-direction: column; gap: 4px; }
+.avatar-hint { font-size: 12px; color: var(--text-tertiary); margin: 0; }
+
+.section-actions { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-light); }
 
 .security-item { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--border-light); }
 .security-info h4 { font-size: 14px; font-weight: 500; color: var(--text-primary); margin: 0 0 4px 0; }
@@ -262,6 +394,4 @@ import { UserIcon, LockOnIcon, NotificationIcon, PaletteIcon, CheckIcon } from '
 .theme-option span { font-size: 12px; color: var(--text-secondary); }
 
 .density-setting h4 { font-size: 14px; font-weight: 500; color: var(--text-primary); margin: 0 0 16px 0; }
-
-.settings-footer { padding-top: 24px; border-top: 1px solid var(--border-light); margin-top: 32px; }
 </style>

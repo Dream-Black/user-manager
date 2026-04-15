@@ -52,14 +52,6 @@ export const reviewApi = {
   delete: (id) => api.delete(`/reviews/${id}`)
 }
 
-// 分类 API
-export const categoryApi = {
-  list: () => api.get('/categories'),
-  create: (data) => api.post('/categories', data),
-  update: (id, data) => api.put(`/categories/${id}`, data),
-  delete: (id) => api.delete(`/categories/${id}`)
-}
-
 // 设置 API
 export const settingsApi = {
   get: () => api.get('/settings'),

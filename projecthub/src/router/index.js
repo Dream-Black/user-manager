@@ -6,7 +6,6 @@ import TaskList from '../views/tasks/TaskList.vue'
 import GanttView from '../views/gantt/GanttView.vue'
 import TimelineView from '../views/timeline/TimelineView.vue'
 import ReviewList from '../views/review/ReviewList.vue'
-import CategoriesView from '../views/categories/CategoriesView.vue'
 import AiView from '../views/ai/AiView.vue'
 import SettingsView from '../views/settings/SettingsView.vue'
 
@@ -52,12 +51,6 @@ const routes = [
     name: 'Review',
     component: ReviewList,
     meta: { title: '复盘总结' }
-  },
-  {
-    path: '/categories',
-    name: 'Categories',
-    component: CategoriesView,
-    meta: { title: '分类管理' }
   },
   {
     path: '/ai',

@@ -27,10 +27,10 @@
 
     <!-- 用户信息 -->
     <div class="user-section">
-      <img :src="user?.avatar || ''" :alt="user?.name" class="user-avatar" />
+      <img :src="user?.avatar || '/default-avatar.png'" :alt="user?.name" class="user-avatar" />
       <div v-if="!isCollapsed" class="user-info">
-        <span class="user-name">{{ user?.name || '访客' }}</span>
-        <span class="user-role">{{ user?.role || '管理员' }}</span>
+        <span class="user-name">{{ user?.name || '加载中...' }}</span>
+        <span class="user-role">{{ user?.role || user?.department || '用户' }}</span>
       </div>
     </div>
 
@@ -79,18 +79,27 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { userService } from '@/services/dataService'
 
 const route = useRoute()
 const router = useRouter()
 
 const isCollapsed = ref(false)
+const user = ref(null)
 
-const user = ref({
-  name: '张三',
-  role: '产品经理',
-  avatar: ''
+const fetchUser = async () => {
+  try {
+    const data = await userService.getCurrent()
+    user.value = data
+  } catch (error) {
+    console.error('获取用户信息失败:', error)
+  }
+}
+
+onMounted(() => {
+  fetchUser()
 })
 
 const navGroups = ref([
@@ -131,11 +140,6 @@ const navGroups = ref([
         path: '/resources', 
         title: '资源管理', 
         icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-7-2h2v-4h4v-2h-4V7h-2v4H8v2h4z" stroke="currentColor" stroke-width="2"/></svg>'
-      },
-      { 
-        path: '/categories', 
-        title: '分类管理', 
-        icon: '<svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
       },
       { 
         path: '/review', 
