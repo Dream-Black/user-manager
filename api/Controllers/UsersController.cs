@@ -89,43 +89,87 @@ public class UsersController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// 上传头像（Base64）
-    /// </summary>
-    [HttpPost("current/avatar")]
-    public async Task<IActionResult> UploadAvatar([FromBody] UploadAvatarRequest request)
+/// <summary>
+/// 上传头像（Base64）
+/// </summary>
+[HttpPost("current/avatar")]
+public async Task<IActionResult> UploadAvatar([FromBody] UploadAvatarRequest request)
+{
+    if (string.IsNullOrEmpty(request.Avatar))
     {
-        if (string.IsNullOrEmpty(request.Avatar))
-        {
-            return BadRequest(new { message = "头像数据不能为空" });
-        }
-
-        // 验证Base64格式
-        if (!request.Avatar.StartsWith("data:image/"))
-        {
-            return BadRequest(new { message = "无效的图片格式" });
-        }
-
-        var user = await _context.Users.FirstOrDefaultAsync();
-        
-        if (user == null)
-        {
-            user = new User { Id = 1 };
-            _context.Users.Add(user);
-        }
-
-        // 限制头像大小（约50KB）
-        if (request.Avatar.Length > 50000)
-        {
-            return BadRequest(new { message = "图片太大，请重新裁剪" });
-        }
-
-        user.Avatar = request.Avatar;
-        user.UpdatedAt = DateTime.Now;
-        await _context.SaveChangesAsync();
-
-        return Ok(new { message = "头像上传成功", avatar = user.Avatar });
+        return BadRequest(new { message = "头像数据不能为空" });
     }
+
+    // 验证Base64格式
+    if (!request.Avatar.StartsWith("data:image/"))
+    {
+        return BadRequest(new { message = "无效的图片格式" });
+    }
+
+    var user = await _context.Users.FirstOrDefaultAsync();
+    
+    if (user == null)
+    {
+        user = new User { Id = 1 };
+        _context.Users.Add(user);
+    }
+
+    // 限制头像大小（约50KB）
+    if (request.Avatar.Length > 50000)
+    {
+        return BadRequest(new { message = "图片太大，请重新裁剪" });
+    }
+
+    user.Avatar = request.Avatar;
+    user.UpdatedAt = DateTime.Now;
+    await _context.SaveChangesAsync();
+
+    return Ok(new { message = "头像上传成功", avatar = user.Avatar });
+}
+
+/// <summary>
+/// 获取用户设置
+/// </summary>
+[HttpGet("current/settings")]
+public async Task<IActionResult> GetUserSettings()
+{
+    var user = await _context.Users.FirstOrDefaultAsync();
+    
+    return Ok(new
+    {
+        theme = user?.Theme ?? "light",
+        density = user?.Density ?? "normal"
+    });
+}
+
+/// <summary>
+/// 更新用户设置
+/// </summary>
+[HttpPut("current/settings")]
+public async Task<IActionResult> UpdateUserSettings([FromBody] UserSettingsRequest request)
+{
+    var user = await _context.Users.FirstOrDefaultAsync();
+    
+    if (user == null)
+    {
+        user = new User { Id = 1 };
+        _context.Users.Add(user);
+    }
+
+    if (!string.IsNullOrEmpty(request.Theme))
+        user.Theme = request.Theme;
+    if (!string.IsNullOrEmpty(request.Density))
+        user.Density = request.Density;
+
+    user.UpdatedAt = DateTime.Now;
+    await _context.SaveChangesAsync();
+
+    return Ok(new
+    {
+        theme = user.Theme,
+        density = user.Density
+    });
+}
 }
 
 public class UpdateUserRequest
@@ -140,4 +184,13 @@ public class UpdateUserRequest
 public class UploadAvatarRequest
 {
     public string Avatar { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 用户设置请求
+/// </summary>
+public class UserSettingsRequest
+{
+    public string? Theme { get; set; }
+    public string? Density { get; set; }
 }

@@ -36,6 +36,14 @@ public class User
     [MaxLength(50000)]
     public string? Avatar { get; set; }
 
+    /// <summary>主题模式（light/dark/auto）</summary>
+    [MaxLength(20)]
+    public string? Theme { get; set; } = "light";
+
+    /// <summary>界面密度（compact/normal/comfortable）</summary>
+    [MaxLength(20)]
+    public string? Density { get; set; } = "normal";
+
     /// <summary>创建时间</summary>
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 

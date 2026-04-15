@@ -64,7 +64,7 @@ app.Use(async (context, next) =>
     }
 });
 
-// 自动创建缺失的数据库表
+// 自动同步数据库结构
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -72,86 +72,357 @@ using (var scope = app.Services.CreateScope())
     
     try
     {
-        // 检查并创建缺失的表
         var connection = db.Database.GetDbConnection();
         connection.Open();
         
         using var command = connection.CreateCommand();
         
-        // ResourcePaths 表
+        // 辅助函数：检查表是否存在
+        bool TableExists(string tableName)
+        {
+            command.CommandText = $@"
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{tableName}'";
+            return Convert.ToInt32(command.ExecuteScalar()) > 0;
+        }
+        
+        // 辅助函数：检查列是否存在
+        bool ColumnExists(string tableName, string columnName)
+        {
+            command.CommandText = $@"
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = '{tableName}' 
+                AND COLUMN_NAME = '{columnName}'";
+            return Convert.ToInt32(command.ExecuteScalar()) > 0;
+        }
+        
+        // 1. 确保 __EFMigrationsHistory 表存在
         command.CommandText = @"
-            CREATE TABLE IF NOT EXISTS ResourcePaths (
-                Id INT AUTO_INCREMENT PRIMARY KEY,
-                ComputerId INT NOT NULL,
-                Type VARCHAR(50) NOT NULL,
-                Path VARCHAR(1000) NOT NULL,
-                IsEnabled BIT NOT NULL DEFAULT 1,
-                CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (ComputerId) REFERENCES Computers(Id) ON DELETE CASCADE
+            CREATE TABLE IF NOT EXISTS __EFMigrationsHistory (
+                MigrationId VARCHAR(150) NOT NULL PRIMARY KEY,
+                ProductVersion VARCHAR(32) NOT NULL
             )";
         command.ExecuteNonQuery();
-        logger.LogInformation("✓ ResourcePaths 表检查完成");
         
-        // Comics 表
-        command.CommandText = @"
-            CREATE TABLE IF NOT EXISTS Comics (
-                Id INT AUTO_INCREMENT PRIMARY KEY,
-                ResourcePathId INT NOT NULL,
-                FolderName VARCHAR(255) NOT NULL,
-                DisplayName VARCHAR(255) NOT NULL,
-                Type VARCHAR(50) NOT NULL DEFAULT 'manga',
-                ThumbnailBase64 MEDIUMTEXT NULL,
-                CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                FOREIGN KEY (ResourcePathId) REFERENCES ResourcePaths(Id) ON DELETE CASCADE
-            )";
-        command.ExecuteNonQuery();
-        logger.LogInformation("✓ Comics 表检查完成");
+        // 2. 创建 Computers 表（如果不存在）
+        if (!TableExists("Computers"))
+        {
+            command.CommandText = @"
+                CREATE TABLE Computers (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Name VARCHAR(100) NOT NULL,
+                    HostName VARCHAR(255) NOT NULL,
+                    IsOnline TINYINT(1) NOT NULL DEFAULT 1,
+                    LastHeartbeat DATETIME(6) NULL,
+                    CreatedAt DATETIME(6) NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Computers 表已创建");
+        }
         
-        // ComicChapters 表
-        command.CommandText = @"
-            CREATE TABLE IF NOT EXISTS ComicChapters (
-                Id INT AUTO_INCREMENT PRIMARY KEY,
-                ComicId INT NOT NULL,
-                FolderName VARCHAR(255) NOT NULL,
-                DisplayName VARCHAR(255) NOT NULL,
-                SortOrder INT NOT NULL DEFAULT 0,
-                CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (ComicId) REFERENCES Comics(Id) ON DELETE CASCADE
-            )";
-        command.ExecuteNonQuery();
-        logger.LogInformation("✓ ComicChapters 表检查完成");
+        // 3. 创建 Projects 表（如果不存在）
+        if (!TableExists("Projects"))
+        {
+            command.CommandText = @"
+                CREATE TABLE Projects (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Name VARCHAR(200) NOT NULL,
+                    Description VARCHAR(1000) NULL,
+                    Type VARCHAR(50) NOT NULL DEFAULT 'work',
+                    Customer VARCHAR(200) NULL,
+                    Status VARCHAR(50) NOT NULL DEFAULT 'active',
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL,
+                    CompletedAt DATETIME(6) NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Projects 表已创建");
+        }
         
-        // Users 表
-        command.CommandText = @"
-            CREATE TABLE IF NOT EXISTS Users (
-                Id INT AUTO_INCREMENT PRIMARY KEY,
-                Name VARCHAR(100) NOT NULL DEFAULT '用户',
-                Email VARCHAR(200) NULL,
-                Phone VARCHAR(20) NULL,
-                Department VARCHAR(50) NULL,
-                Role VARCHAR(100) NULL,
-                Avatar MEDIUMTEXT NULL,
-                CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE INDEX IX_Users_Email (Email)
-            )";
-        command.ExecuteNonQuery();
-        logger.LogInformation("✓ Users 表检查完成");
+        // 4. 创建 TaskCategories 表（如果不存在）
+        if (!TableExists("TaskCategories"))
+        {
+            command.CommandText = @"
+                CREATE TABLE TaskCategories (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Name VARCHAR(50) NOT NULL,
+                    Icon VARCHAR(100) NULL,
+                    Color VARCHAR(20) NOT NULL DEFAULT '#4A90D9',
+                    IsSystem TINYINT(1) NOT NULL,
+                    SortOrder INT NOT NULL,
+                    CreatedAt DATETIME(6) NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            
+            // 插入默认分类
+            command.CommandText = @"
+                INSERT INTO TaskCategories (Id, Name, Icon, Color, IsSystem, SortOrder, CreatedAt) VALUES
+                (1, '开发', 'code', '#4A90D9', 1, 1, NOW()),
+                (2, '会议', 'users', '#F5C26B', 1, 2, NOW()),
+                (3, '文档', 'file-text', '#67CBAB', 1, 3, NOW()),
+                (4, '设计', 'pen-tool', '#A78BFA', 1, 4, NOW()),
+                (5, '调试', 'bug', '#E8908A', 1, 5, NOW()),
+                (6, 'BUG', 'alert-circle', '#E8908A', 1, 6, NOW())
+                ON DUPLICATE KEY UPDATE Name=VALUES(Name)";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ TaskCategories 表已创建并填充默认数据");
+        }
         
-        // 插入默认用户（如果不存在）
+        // 5. 创建 Users 表（如果不存在）
+        if (!TableExists("Users"))
+        {
+            command.CommandText = @"
+                CREATE TABLE Users (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Name VARCHAR(100) NOT NULL,
+                    Email VARCHAR(200) NULL,
+                    Phone VARCHAR(20) NULL,
+                    Department VARCHAR(50) NULL,
+                    Role VARCHAR(100) NULL,
+                    Avatar LONGTEXT NULL,
+                    Theme VARCHAR(20) NULL DEFAULT 'light',
+                    Density VARCHAR(20) NULL DEFAULT 'normal',
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            
+            // 插入默认用户
+            command.CommandText = @"
+                INSERT INTO Users (Id, Name, CreatedAt, UpdatedAt) VALUES (1, '用户', NOW(), NOW())
+                ON DUPLICATE KEY UPDATE Name=VALUES(Name)";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Users 表已创建并填充默认数据");
+        }
+        
+        // 6. 创建 UserSettings 表（如果不存在）
+        if (!TableExists("UserSettings"))
+        {
+            command.CommandText = @"
+                CREATE TABLE UserSettings (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    DeepSeekApiKey VARCHAR(500) NULL,
+                    DeepSeekModel VARCHAR(100) NOT NULL DEFAULT 'deepseek-chat',
+                    WorkStartTime TIME(6) NOT NULL DEFAULT '09:00:00',
+                    WorkEndTime TIME(6) NOT NULL DEFAULT '18:00:00',
+                    LunchBreakStart TIME(6) NULL,
+                    LunchBreakEnd TIME(6) NULL,
+                    CommuteHours DECIMAL(65,30) NOT NULL DEFAULT 1,
+                    CurrentJob VARCHAR(200) NULL,
+                    CurrentCompany VARCHAR(200) NULL,
+                    CurrentPlan VARCHAR(500) NULL,
+                    ReminderTime TIME(6) NOT NULL DEFAULT '08:30:00',
+                    ReminderEnabled TINYINT(1) NOT NULL DEFAULT 1,
+                    ThemeMode VARCHAR(20) NOT NULL DEFAULT 'light',
+                    UpdatedAt DATETIME(6) NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            
+            // 插入默认设置
+            command.CommandText = @"
+                INSERT INTO UserSettings (Id, UpdatedAt) VALUES (1, NOW())
+                ON DUPLICATE KEY UPDATE UpdatedAt=VALUES(UpdatedAt)";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ UserSettings 表已创建并填充默认数据");
+        }
+        
+        // 7. 创建 ResourcePaths 表（如果不存在）
+        if (!TableExists("ResourcePaths"))
+        {
+            command.CommandText = @"
+                CREATE TABLE ResourcePaths (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    ComputerId INT NOT NULL,
+                    Type VARCHAR(50) NOT NULL,
+                    Path VARCHAR(1000) NOT NULL,
+                    IsEnabled TINYINT(1) NOT NULL DEFAULT 1,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (ComputerId) REFERENCES Computers(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ ResourcePaths 表已创建");
+        }
+        
+        // 8. 创建 Reviews 表（如果不存在）
+        if (!TableExists("Reviews"))
+        {
+            command.CommandText = @"
+                CREATE TABLE Reviews (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    ProjectId INT NOT NULL,
+                    TaskId INT NULL,
+                    Title VARCHAR(200) NULL,
+                    GoodPoints VARCHAR(2000) NULL,
+                    Improvements VARCHAR(2000) NULL,
+                    NextActions VARCHAR(2000) NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (ProjectId) REFERENCES Projects(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Reviews 表已创建");
+        }
+        
+        // 9. 创建 Tasks 表（如果不存在）
+        if (!TableExists("Tasks"))
+        {
+            command.CommandText = @"
+                CREATE TABLE Tasks (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Title VARCHAR(200) NOT NULL,
+                    Description VARCHAR(2000) NULL,
+                    ProjectId INT NOT NULL,
+                    Category VARCHAR(50) NOT NULL DEFAULT 'dev',
+                    Priority VARCHAR(50) NOT NULL DEFAULT 'medium',
+                    Status VARCHAR(50) NOT NULL DEFAULT 'todo',
+                    EstimatedHours DECIMAL(65,30) NOT NULL DEFAULT 0,
+                    Progress INT NOT NULL DEFAULT 0,
+                    SortOrder INT NOT NULL DEFAULT 0,
+                    PlanStartDate DATETIME(6) NULL,
+                    PlanEndDate DATETIME(6) NULL,
+                    ActualStartDate DATETIME(6) NULL,
+                    ActualEndDate DATETIME(6) NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (ProjectId) REFERENCES Projects(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Tasks 表已创建");
+        }
+        
+        // 10. 创建 Timelines 表（如果不存在）
+        if (!TableExists("Timelines"))
+        {
+            command.CommandText = @"
+                CREATE TABLE Timelines (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    ProjectId INT NOT NULL,
+                    EventType VARCHAR(50) NOT NULL,
+                    Title VARCHAR(200) NOT NULL,
+                    Description VARCHAR(2000) NULL,
+                    TaskId INT NULL,
+                    OccurredAt DATETIME(6) NOT NULL,
+                    Metadata LONGTEXT NULL,
+                    FOREIGN KEY (ProjectId) REFERENCES Projects(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Timelines 表已创建");
+        }
+        
+        // 11. 创建 Comics 表（如果不存在）
+        if (!TableExists("Comics"))
+        {
+            command.CommandText = @"
+                CREATE TABLE Comics (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    ResourcePathId INT NOT NULL,
+                    FolderName VARCHAR(255) NOT NULL,
+                    DisplayName VARCHAR(255) NOT NULL,
+                    Type VARCHAR(50) NOT NULL DEFAULT 'manga',
+                    ThumbnailBase64 MEDIUMTEXT NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NULL,
+                    FOREIGN KEY (ResourcePathId) REFERENCES ResourcePaths(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Comics 表已创建");
+        }
+        
+        // 12. 创建 TaskDelays 表（如果不存在）
+        if (!TableExists("TaskDelays"))
+        {
+            command.CommandText = @"
+                CREATE TABLE TaskDelays (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    TaskId INT NOT NULL,
+                    Reason VARCHAR(1000) NOT NULL,
+                    OriginalPlanEndDate DATETIME(6) NOT NULL,
+                    NewPlanEndDate DATETIME(6) NOT NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (TaskId) REFERENCES Tasks(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ TaskDelays 表已创建");
+        }
+        
+        // 13. 创建 TaskExtraRequirements 表（如果不存在）
+        if (!TableExists("TaskExtraRequirements"))
+        {
+            command.CommandText = @"
+                CREATE TABLE TaskExtraRequirements (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    TaskId INT NOT NULL,
+                    Description VARCHAR(1000) NOT NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (TaskId) REFERENCES Tasks(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ TaskExtraRequirements 表已创建");
+        }
+        
+        // 14. 创建 TaskTimelines 表（如果不存在）
+        if (!TableExists("TaskTimelines"))
+        {
+            command.CommandText = @"
+                CREATE TABLE TaskTimelines (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    TaskId INT NOT NULL,
+                    ChangeType VARCHAR(50) NOT NULL,
+                    Title VARCHAR(100) NOT NULL,
+                    Details VARCHAR(500) NULL,
+                    OldValue VARCHAR(200) NULL,
+                    NewValue VARCHAR(200) NULL,
+                    OccurredAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (TaskId) REFERENCES Tasks(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ TaskTimelines 表已创建");
+        }
+        
+        // 15. 创建 ComicChapters 表（如果不存在）
+        if (!TableExists("ComicChapters"))
+        {
+            command.CommandText = @"
+                CREATE TABLE ComicChapters (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    ComicId INT NOT NULL,
+                    FolderName VARCHAR(255) NOT NULL,
+                    DisplayName VARCHAR(255) NOT NULL,
+                    SortOrder INT NOT NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (ComicId) REFERENCES Comics(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ ComicChapters 表已创建");
+        }
+        
+        // 16. 检查并添加 Users 表的新列（兼容旧代码）
+        if (!ColumnExists("Users", "Theme"))
+        {
+            command.CommandText = "ALTER TABLE Users ADD COLUMN Theme VARCHAR(20) NULL DEFAULT 'light'";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Users.Theme 列已添加");
+        }
+        
+        if (!ColumnExists("Users", "Density"))
+        {
+            command.CommandText = "ALTER TABLE Users ADD COLUMN Density VARCHAR(20) NULL DEFAULT 'normal'";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Users.Density 列已添加");
+        }
+        
+        // 17. 记录已应用的迁移
         command.CommandText = @"
-            INSERT IGNORE INTO Users (Id, Name, CreatedAt, UpdatedAt) 
-            VALUES (1, '用户', NOW(), NOW())";
+            INSERT IGNORE INTO __EFMigrationsHistory (MigrationId, ProductVersion)
+            VALUES ('20260415165055_AddUserThemeAndDensity', '8.0.0')";
         command.ExecuteNonQuery();
-        logger.LogInformation("✓ 默认用户检查完成");
         
         connection.Close();
-        logger.LogInformation("✓ 数据库表结构检查完成");
+        logger.LogInformation("✓ 数据库结构同步完成 - 共 15 个表已检查/创建");
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "数据库表创建失败");
+        logger.LogError(ex, "数据库结构同步失败");
     }
 }
 
@@ -159,7 +430,6 @@ app.UseSwagger(options =>
 {
     options.PreSerializeFilters.Add((document, request) =>
     {
-        // 捕获Swagger生成时的错误
         Console.WriteLine($"[Swagger] Generating OpenAPI document for: {request.Path}");
     });
 });

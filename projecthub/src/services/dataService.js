@@ -181,6 +181,19 @@ export const settingsService = {
   }
 }
 
+// ============ 用户设置相关 ============
+export const userSettingsService = {
+  // 获取用户设置
+  get: async () => {
+    return api.get('/users/current/settings')
+  },
+
+  // 更新用户设置
+  update: async (data) => {
+    return api.put('/users/current/settings', data)
+  }
+}
+
 // ============ AI 相关 ============
 export const aiService = {
   chat: async (data) => {

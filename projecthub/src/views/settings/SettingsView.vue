@@ -178,7 +178,7 @@ import { ref, computed, onMounted } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { markRaw } from 'vue'
 import AvatarCropper from '@/components/settings/AvatarCropper.vue'
-import { userService } from '@/services/dataService'
+import { userService, userSettingsService } from '@/services/dataService'
 
 const activeSection = ref('profile')
 const profileFormRef = ref(null)
@@ -244,6 +244,18 @@ const appearanceForm = ref({
   density: 'normal'
 })
 
+// 监听系统主题变化
+const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
+const updateSystemTheme = () => {
+  if (appearanceForm.value.theme === 'auto') {
+    const isDark = mediaQuery.matches
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
+  }
+}
+
+mediaQuery.addEventListener('change', updateSystemTheme)
+
 // 加载用户信息
 const loadUserProfile = async () => {
   try {
@@ -306,13 +318,22 @@ const handleAvatarCrop = async ({ base64 }) => {
 }
 
 // 设置主题
-const setTheme = (theme) => {
+const setTheme = async (theme) => {
   appearanceForm.value.theme = theme
-  handleAppearanceChange()
   
-  // 应用主题
-  document.documentElement.setAttribute('theme', theme)
+  // 应用主题到 DOM
+  if (theme === 'auto') {
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
+  } else {
+    document.documentElement.setAttribute('data-theme', theme)
+  }
+  
+  // 保存到本地
   localStorage.setItem('theme', theme)
+  
+  // 保存到后端
+  await handleAppearanceChange()
 }
 
 // 设置变更处理
@@ -326,24 +347,65 @@ const handleNotificationChange = () => {
   MessagePlugin.success('通知设置已保存')
 }
 
-const handleAppearanceChange = () => {
-  // 外观设置已在 setTheme 中处理
+const handleAppearanceChange = async () => {
+  try {
+    // 保存到后端
+    await userSettingsService.update({
+      theme: appearanceForm.value.theme,
+      density: appearanceForm.value.density
+    })
+    MessagePlugin.success('外观设置已保存')
+  } catch (error) {
+    console.error('保存外观设置失败:', error)
+    // 即使保存失败，本地已生效
+  }
 }
 
 // 图标
 import { markRaw as vueMarkRaw } from 'vue'
 import { UserIcon, LockOnIcon, NotificationIcon, PaletteIcon, CheckIcon, UploadIcon } from 'tdesign-icons-vue-next'
 
-onMounted(() => {
-  loadUserProfile()
-  
-  // 恢复主题设置
+// 初始化主题
+const initTheme = () => {
   const savedTheme = localStorage.getItem('theme')
   if (savedTheme) {
     appearanceForm.value.theme = savedTheme
-    document.documentElement.setAttribute('theme', savedTheme)
   }
+  applyTheme(appearanceForm.value.theme)
+}
+
+onMounted(async () => {
+  await loadUserProfile()
+  initTheme()
+  await loadUserSettings()
 })
+
+// 应用主题
+const applyTheme = (theme) => {
+  if (theme === 'auto') {
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
+  } else {
+    document.documentElement.setAttribute('data-theme', theme)
+  }
+}
+
+// 加载用户设置
+const loadUserSettings = async () => {
+  try {
+    const settings = await userSettingsService.get()
+    if (settings.theme) {
+      appearanceForm.value.theme = settings.theme
+      localStorage.setItem('theme', settings.theme)
+      applyTheme(settings.theme)
+    }
+    if (settings.density) {
+      appearanceForm.value.density = settings.density
+    }
+  } catch (error) {
+    console.error('加载用户设置失败:', error)
+  }
+}
 </script>
 
 <style scoped>
