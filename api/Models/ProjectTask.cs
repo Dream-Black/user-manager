@@ -65,4 +65,5 @@ public class ProjectTask
     public virtual ICollection<TaskTimeline> TaskTimelines { get; set; } = new List<TaskTimeline>();
     public virtual ICollection<TaskDelay> Delays { get; set; } = new List<TaskDelay>();
     public virtual ICollection<TaskExtraRequirement> ExtraRequirements { get; set; } = new List<TaskExtraRequirement>();
+    public virtual ICollection<SubTask> SubTasks { get; set; } = new List<SubTask>();
 }

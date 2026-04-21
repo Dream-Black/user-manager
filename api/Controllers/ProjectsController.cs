@@ -52,7 +52,11 @@ public class ProjectsController : ControllerBase
                 // 修复：确保预估工时总和大于0，避免除零错误
                 Progress = p.Tasks.Any()
                     ? (int)Math.Round(p.Tasks.Sum(t => t.EstimatedHours * t.Progress / 100m) / Math.Max(p.Tasks.Sum(t => t.EstimatedHours), 1) * 100)
-                    : 0
+                    : 0,
+                // 项目截止日期 = 所有任务中最晚的计划完成时间
+                MaxPlanEndDate = p.Tasks.Any(t => t.PlanEndDate.HasValue) 
+                    ? p.Tasks.Max(t => t.PlanEndDate) 
+                    : (DateTime?)null
             })
             .ToListAsync();
 

@@ -205,6 +205,34 @@ export const aiService = {
   }
 }
 
+// ============ 子任务相关 ============
+export const subTaskService = {
+  // 获取父任务的所有子任务
+  getByTaskId: async (taskId) => {
+    return api.get(`/subtasks/by-task/${taskId}`)
+  },
+
+  // 创建子任务
+  create: async (data) => {
+    return api.post('/subtasks', data)
+  },
+
+  // 更新子任务
+  update: async (id, data) => {
+    return api.put(`/subtasks/${id}`, data)
+  },
+
+  // 切换完成状态
+  toggleComplete: async (id) => {
+    return api.patch(`/subtasks/${id}/toggle`)
+  },
+
+  // 删除子任务
+  delete: async (id) => {
+    return api.delete(`/subtasks/${id}`)
+  }
+}
+
 // ============ 甘特图相关 ============
 export const ganttService = {
   getData: async (params = {}) => {

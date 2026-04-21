@@ -396,7 +396,26 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ ComicChapters 表已创建");
         }
         
-        // 16. 检查并添加 Users 表的新列（兼容旧代码）
+        // 16. 创建 SubTasks 表（如果不存在）
+        if (!TableExists("SubTasks"))
+        {
+            command.CommandText = @"
+                CREATE TABLE SubTasks (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    ParentTaskId INT NOT NULL,
+                    Title VARCHAR(200) NOT NULL,
+                    Description VARCHAR(1000) NULL,
+                    IsCompleted TINYINT(1) NOT NULL DEFAULT 0,
+                    SortOrder INT NOT NULL DEFAULT 0,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (ParentTaskId) REFERENCES Tasks(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ SubTasks 表已创建");
+        }
+        
+        // 17. 检查并添加 Users 表的新列（兼容旧代码）
         if (!ColumnExists("Users", "Theme"))
         {
             command.CommandText = "ALTER TABLE Users ADD COLUMN Theme VARCHAR(20) NULL DEFAULT 'light'";
@@ -411,14 +430,14 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ Users.Density 列已添加");
         }
         
-        // 17. 记录已应用的迁移
+        // 18. 记录已应用的迁移
         command.CommandText = @"
             INSERT IGNORE INTO __EFMigrationsHistory (MigrationId, ProductVersion)
             VALUES ('20260415165055_AddUserThemeAndDensity', '8.0.0')";
         command.ExecuteNonQuery();
         
         connection.Close();
-        logger.LogInformation("✓ 数据库结构同步完成 - 共 15 个表已检查/创建");
+        logger.LogInformation("✓ 数据库结构同步完成 - 共 16 个表已检查/创建");
     }
     catch (Exception ex)
     {

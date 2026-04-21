@@ -1,6 +1,5 @@
 <template>
   <div class="projects-page">
-    <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-content">
         <div>
@@ -16,9 +15,7 @@
       </div>
     </div>
 
-    <!-- 创建项目表单 -->
     <div v-if="isNewMode" class="project-form">
-
       <t-form :model="formData" :rules="formRules" ref="formRef" label-width="100px">
         <t-form-item label="项目名称" name="name">
           <t-input v-model="formData.name" placeholder="请输入项目名称" style="max-width: 400px" />
@@ -49,14 +46,11 @@
       </t-form>
     </div>
 
-    <!-- 项目详情 -->
     <template v-else>
-      <!-- 加载状态 -->
       <div v-if="loading" class="loading-container">
         <t-loading size="large" text="加载中..." />
       </div>
 
-      <!-- 项目头部 -->
       <div v-else class="project-header" :style="{ background: project.gradient }">
         <div class="header-content">
           <div class="project-info">
@@ -64,9 +58,10 @@
             <div class="project-text">
               <div class="project-title-row">
                 <h1 class="project-name">{{ project.name }}</h1>
-                <t-tag v-if="stats.isOverdue" type="danger" variant="light" size="large">已逾期</t-tag>
-                <t-tag v-else-if="project.status === 'completed'" type="success" variant="light" size="large">已完成</t-tag>
-                <t-tag v-else type="primary" variant="light" size="large">进行中</t-tag>
+                <t-tag :theme="getProjectTypeTheme(project.type)" variant="outline" size="large">{{ getProjectTypeText(project.type) }}</t-tag>
+                <t-tag v-if="stats.isOverdue" theme="danger" variant="light" size="large">已逾期</t-tag>
+                <t-tag v-else-if="project.status === 'completed'" theme="success" variant="light" size="large">已完成</t-tag>
+                <t-tag v-else theme="primary" variant="light" size="large">进行中</t-tag>
               </div>
               <p class="project-description">{{ project.description || '暂无描述' }}</p>
             </div>
@@ -84,7 +79,6 @@
         </div>
       </div>
 
-      <!-- 项目统计 -->
       <div v-if="!loading" class="project-stats">
         <div class="stat-item">
           <span class="stat-value">{{ project.progress || 0 }}%</span>
@@ -107,7 +101,6 @@
         </div>
       </div>
 
-      <!-- 标签页 -->
       <div class="tabs-container">
         <t-tabs v-if="!loading" v-model="activeTab">
         <t-tab-panel value="tasks" label="任务列表">
@@ -128,57 +121,103 @@
               </t-select>
             </div>
 
-            <!-- 空状态 -->
             <t-empty v-if="filteredTasks.length === 0" description="暂无任务，点击上方添加" />
 
-            <!-- 任务列表 -->
-            <t-table v-else :data="filteredTasks" :columns="tableColumns" row-key="id" hover stripe :header-height="44">
-              <template #title="{ row }">
-                <div class="task-cell">
-                  <t-checkbox :checked="row.status === 'completed'" @change="() => toggleTaskStatus(row)" />
-                  <span :class="{ completed: row.status === 'completed' }">{{ row.title }}</span>
+            <div v-else class="task-list-container">
+              <template v-for="task in filteredTasks" :key="task.id">
+                <div
+                  class="task-row"
+                  :class="{ expanded: expandedTasks.has(task.id) }"
+                  @contextmenu.prevent.stop="showContextMenu($event, task)"
+                >
+                  <div class="task-main">
+                    <div class="expand-icon" @click.stop="toggleExpand(task.id)">
+                      <t-icon :name="expandedTasks.has(task.id) ? 'caret-down' : 'caret-right'" size="16px" />
+                    </div>
+
+                    <t-checkbox :checked="task.status === 'completed'" @change="() => toggleTaskStatus(task)" />
+                    <span :class="{ completed: task.status === 'completed' }">{{ task.title }}</span>
+
+                    <span v-if="subTasksMap[task.id]?.length > 0" class="subtask-count">
+                      ({{ subTasksMap[task.id].filter(s => s.isCompleted).length }}/{{ subTasksMap[task.id].length }})
+                    </span>
+                  </div>
+                  <div class="task-meta">
+                    <t-tag :theme="getCategoryType(task.category)" variant="light" size="small">{{ task.categoryText || task.category }}</t-tag>
+                    <t-tag :theme="getPriorityType(task.priority)" variant="light" size="small">{{ task.priorityText || task.priority }}</t-tag>
+                    <span v-if="isTaskOverdue(task)" class="overdue-text">逾期</span>
+                    <t-tag v-else :theme="getStatusType(task.status)" variant="light" size="small">{{ task.statusText || task.status }}</t-tag>
+                    <div class="progress-cell">
+                      <t-slider v-model="task.progress" :step="10" :show-tooltip="true" :disabled="task.status === 'completed'" :style="{ width: '100px' }" @change="(val) => handleProgressChange(task, val)" />
+                      <span class="progress-text">{{ task.progress }}%</span>
+                    </div>
+                    <span class="hours-text">{{ task.estimatedHours ? task.estimatedHours + 'h' : '-' }}</span>
+                    <span class="date-text">{{ task.planStartDate ? dayjs(task.planStartDate).format('MM/DD') : '-' }}</span>
+                    <span class="date-text" :class="{ overdue: isOverdue(task.planEndDate) }">{{ task.planEndDate ? dayjs(task.planEndDate).format('MM/DD') : '-' }}</span>
+                    <t-button variant="text" size="small" @click.stop="editTask(task)"><EditIcon /></t-button>
+                    <t-button variant="text" size="small" @click.stop="deleteTask(task.id)"><DeleteIcon /></t-button>
+                  </div>
+                </div>
+
+                <div v-if="expandedTasks.has(task.id)" class="subtask-list">
+                  <t-loading v-if="subTasksLoading[task.id]" size="small" text="加载中..." />
+                  <template v-else>
+                    <div
+                      v-for="subTask in subTasksMap[task.id]"
+                      :key="subTask.id"
+                      class="subtask-row"
+                      :class="{ completed: subTask.isCompleted }"
+                      @contextmenu.prevent.stop="showContextMenu($event, { ...task, subTask })"
+                    >
+                      <t-checkbox :checked="subTask.isCompleted" @change="() => toggleSubTaskComplete(subTask)" />
+
+                      <t-input
+                        v-if="inlineEditTask === subTask.id"
+                        :ref="(el) => setInputRef(el, subTask.id)"
+                        :value="inlineEditValue"
+                        size="small"
+                        style="width: 300px"
+                        @update:value="(val) => inlineEditValue = val"
+                        @blur="finishInlineEdit(subTask)"
+                        @enter="finishInlineEdit(subTask)"
+                        @keydown="(val, ctx) => { if (ctx?.e?.key === 'Escape') cancelInlineEdit() }"
+                      />
+                      <span
+                        v-else
+                        class="subtask-title"
+                        @dblclick.stop="startInlineEdit(subTask)"
+                      >{{ subTask.title }}</span>
+                    </div>
+
+                    <div class="subtask-add" @click.stop="addSubTask(task.id)">
+                      <t-icon name="add" size="14px" />
+                      <span>添加子任务</span>
+                    </div>
+                  </template>
                 </div>
               </template>
-              <template #category="{ row }">
-                <t-tag :type="getCategoryType(row.category)" variant="light" size="small">{{ row.categoryText || row.category }}</t-tag>
-              </template>
-              <template #priority="{ row }">
-                <t-tag :type="getPriorityType(row.priority)" variant="light" size="small">{{ row.priorityText || row.priority }}</t-tag>
-              </template>
-              <template #status="{ row }">
-                <t-tag v-if="isTaskOverdue(row)" type="danger" variant="light" size="small">逾期</t-tag>
-                <t-tag v-else :type="getStatusType(row.status)" variant="light" size="small">{{ row.statusText || row.status }}</t-tag>
-              </template>
-              <template #progress="{ row }">
-                <div class="progress-cell">
-                  <t-slider v-model="row.progress" :step="10" :show-tooltip="true" :disabled="row.status === 'completed'" :style="{ width: '100px' }" @change="(val) => handleProgressChange(row, val)" />
-                  <span class="progress-text">{{ row.progress }}%</span>
-                </div>
-              </template>
-              <template #estimatedHours="{ row }">
-                {{ row.estimatedHours ? row.estimatedHours + 'h' : '-' }}
-              </template>
-              <template #planStartDate="{ row }">
-                <span>{{ row.planStartDate ? dayjs(row.planStartDate).format('YYYY年MM月DD日') : '-' }}</span>
-              </template>
-              <template #planEndDate="{ row }">
-                <span :class="{ overdue: isOverdue(row.planEndDate) }">{{ row.planEndDate ? dayjs(row.planEndDate).format('YYYY年MM月DD日') : '-' }}</span>
-              </template>
-              <template #actions="{ row }">
-                <t-button variant="text" size="small" @click="editTask(row)"><EditIcon /></t-button>
-                <t-button variant="text" size="small" @click="deleteTask(row.id)"><DeleteIcon /></t-button>
-              </template>
-            </t-table>
+            </div>
           </div>
         </t-tab-panel>
-
         </t-tabs>
       </div>
     </template>
 
-    <!-- 添加任务弹窗 -->
+    <div
+      v-show="contextMenuVisible"
+      class="custom-context-menu"
+      :style="contextMenuStyle"
+    >
+      <div class="menu-item" @click.stop="handleContextMenuEdit">
+        <t-icon name="edit" style="margin-right: 8px" />编辑
+      </div>
+      <div class="menu-item error" @click.stop="handleContextMenuDelete">
+        <t-icon name="delete" style="margin-right: 8px" />删除
+      </div>
+    </div>
+
     <t-dialog v-model:visible="showAddTaskDialog" header="添加任务" width="600px" :footer="false">
-      <t-form :model="taskForm" :rules="taskRules" ref="taskFormRef" label-width="80px">
+      <t-form :data="taskForm" :rules="taskRules" ref="taskFormRef" label-width="80px">
         <t-form-item label="任务名称" name="title">
           <t-input v-model="taskForm.title" placeholder="请输入任务名称" />
         </t-form-item>
@@ -218,9 +257,33 @@
       </t-form>
     </t-dialog>
 
-    <!-- 编辑任务弹窗 -->
+    <!-- 编辑项目弹窗 -->
+    <t-dialog v-model:visible="showEditProjectDialog" header="编辑项目" width="500px" :footer="false">
+      <t-form :data="editProjectForm" :rules="editProjectRules" ref="formRef" label-width="100px">
+        <t-form-item label="项目名称" name="name">
+          <t-input v-model="editProjectForm.name" placeholder="请输入项目名称" style="max-width: 350px" />
+        </t-form-item>
+        <t-form-item label="项目描述" name="description">
+          <t-textarea v-model="editProjectForm.description" placeholder="请输入项目描述" style="max-width: 400px" :rows="3" />
+        </t-form-item>
+        <t-form-item label="项目类型" name="type">
+          <t-select v-model="editProjectForm.type" placeholder="请选择项目类型" style="max-width: 200px">
+            <t-option value="web" label="Web应用" />
+            <t-option value="mobile" label="移动应用" />
+            <t-option value="desktop" label="桌面应用" />
+            <t-option value="ai" label="AI项目" />
+            <t-option value="other" label="其他" />
+          </t-select>
+        </t-form-item>
+        <t-form-item>
+          <t-button theme="primary" @click="handleEditProject" :loading="saving">保存</t-button>
+          <t-button variant="outline" @click="showEditProjectDialog = false" style="margin-left: 12px">取消</t-button>
+        </t-form-item>
+      </t-form>
+    </t-dialog>
+
     <t-dialog v-model:visible="showEditTaskDialog" header="编辑任务" width="600px" :footer="false">
-      <t-form :model="taskForm" :rules="taskRules" ref="taskFormRef2" label-width="80px">
+      <t-form :data="taskForm" :rules="taskRules" ref="taskFormRef2" label-width="80px">
         <t-form-item label="任务名称" name="title">
           <t-input v-model="taskForm.title" placeholder="请输入任务名称" />
         </t-form-item>
@@ -270,11 +333,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
+import { AddIcon, EditIcon, SearchIcon, DeleteIcon, ArrowLeftIcon } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
-import { projectService } from '@/services/dataService'
+import { projectService, subTaskService } from '@/services/dataService'
 
 const route = useRoute()
 const router = useRouter()
@@ -326,23 +390,210 @@ const taskFilter = ref({
   priority: null
 })
 
-// 表格列配置
-const tableColumns = [
-  { colKey: 'title', title: '任务', width: '25%' },
-  { colKey: 'status', title: '状态', width: '10%' },
-  { colKey: 'category', title: '分类', width: '8%' },
-  { colKey: 'priority', title: '优先级', width: '8%' },
-  { colKey: 'progress', title: '进度', width: '17%' },
-  { colKey: 'estimatedHours', title: '工时', width: '7%' },
-  { colKey: 'planStartDate', title: '开始日期', width: '11%' },
-  { colKey: 'planEndDate', title: '截止日期', width: '11%' },
-  { colKey: 'actions', title: '操作', align: 'center' }
-]
-
 // 弹窗
 const showAddTaskDialog = ref(false)
 const showEditTaskDialog = ref(false)
+const showEditProjectDialog = ref(false)
 const editingTaskId = ref(null)
+
+// 编辑项目表单
+const editProjectForm = ref({
+  name: '',
+  description: '',
+  type: 'web'
+})
+const editProjectRules = {
+  name: [{ required: true, message: '请输入项目名称', trigger: 'blur' }]
+}
+
+// ===== 子任务相关状态 =====
+const expandedTasks = ref(new Set()) // 展开的任务ID集合
+const subTasksMap = ref({}) // { taskId: [subTasks] }
+const subTasksLoading = ref({}) // { taskId: boolean }
+const contextMenuVisible = ref(false)
+const contextMenuTask = ref(null)
+const contextMenuStyle = ref({})
+
+// 行内编辑状态
+const inlineEditTask = ref(null) // 正在行内编辑的子任务ID
+const inlineEditValue = ref('')
+
+// 【修复：通过函数将所有 v-for 生成的 input 引用保存到对象中】
+const inputRefs = ref({})
+const setInputRef = (el, id) => {
+  if (el) inputRefs.value[id] = el
+}
+
+// 加载子任务
+const loadSubTasks = async (taskId) => {
+  if (subTasksMap.value[taskId]) return
+
+  subTasksLoading.value[taskId] = true
+  try {
+    const data = await subTaskService.getByTaskId(taskId)
+    subTasksMap.value[taskId] = data || []
+  } catch (error) {
+    console.error('加载子任务失败:', error)
+    subTasksMap.value[taskId] = []
+  } finally {
+    subTasksLoading.value[taskId] = false
+  }
+}
+
+// 切换展开/收起
+const toggleExpand = async (taskId) => {
+  if (expandedTasks.value.has(taskId)) {
+    expandedTasks.value.delete(taskId)
+  } else {
+    expandedTasks.value.add(taskId)
+    await loadSubTasks(taskId)
+  }
+  expandedTasks.value = new Set(expandedTasks.value)
+}
+
+// 添加子任务
+const addSubTask = async (taskId) => {
+  try {
+    const newSubTask = await subTaskService.create({
+      ParentTaskId: taskId,
+      Title: '新子任务',
+      SortOrder: (subTasksMap.value[taskId]?.length || 0) + 1
+    })
+    if (!subTasksMap.value[taskId]) {
+      subTasksMap.value[taskId] = []
+    }
+    subTasksMap.value[taskId].push(newSubTask)
+    // 开始行内编辑
+    startInlineEdit(newSubTask)
+  } catch (error) {
+    console.error('添加子任务失败:', error)
+    MessagePlugin.error('添加子任务失败')
+  }
+}
+
+// 【修复：乐观 UI 更新，保证复选框瞬间响应】
+const toggleSubTaskComplete = async (subTask) => {
+  const originalState = subTask.isCompleted
+  subTask.isCompleted = !originalState
+  try {
+    const result = await subTaskService.toggleComplete(subTask.id)
+    if (result && typeof result.isCompleted === 'boolean') {
+      subTask.isCompleted = result.isCompleted
+    }
+  } catch (error) {
+    console.error('切换状态失败:', error)
+    subTask.isCompleted = originalState // 失败则回滚
+    MessagePlugin.error('操作失败')
+  }
+}
+
+// 开始行内编辑
+const startInlineEdit = (subTask) => {
+  inlineEditTask.value = subTask.id
+  inlineEditValue.value = subTask.title
+  nextTick(() => {
+    // 【修复：通过准确的 ID 寻找 Input 实例而不是粗暴指向一个 ref】
+    const inputInstance = inputRefs.value[subTask.id]
+    if (inputInstance) {
+      if (typeof inputInstance.focus === 'function') {
+        inputInstance.focus()
+      }
+      const inputEl = inputInstance.$el?.querySelector?.('input') || inputInstance.$el
+      if (inputEl?.select) {
+        inputEl.select()
+      }
+    }
+  })
+}
+
+// 【修复：防止 Blur 和 Enter 同时触发导致更新二次调用】
+const finishInlineEdit = async (subTask) => {
+  if (inlineEditTask.value !== subTask.id) return // 不匹配说明已经保存过了，防止重复
+  inlineEditTask.value = null
+
+  const newTitle = inlineEditValue.value.trim()
+  if (newTitle && newTitle !== subTask.title) {
+    const oldTitle = subTask.title
+    subTask.title = newTitle // 乐观更新
+    try {
+      await subTaskService.update(subTask.id, { Title: newTitle })
+    } catch (error) {
+      console.error('更新失败:', error)
+      subTask.title = oldTitle // 回滚
+      MessagePlugin.error('更新失败')
+    }
+  }
+}
+
+// 取消行内编辑
+const cancelInlineEdit = () => {
+  inlineEditTask.value = null
+}
+
+// 删除子任务
+const deleteSubTask = async (taskId, subTaskId) => {
+  try {
+    await subTaskService.delete(subTaskId)
+    subTasksMap.value[taskId] = subTasksMap.value[taskId].filter(s => s.id !== subTaskId)
+    MessagePlugin.success('删除成功')
+  } catch (error) {
+    console.error('删除失败:', error)
+    MessagePlugin.error('删除失败')
+  }
+}
+
+// 【修复：右键菜单显示位置溢出处理】
+const showContextMenu = (event, task) => {
+  contextMenuTask.value = task
+
+  let x = event.clientX
+  let y = event.clientY
+  
+  // 简单的屏幕边缘检测，防止右键菜单超出视口
+  if (window.innerWidth - x < 150) x = window.innerWidth - 150
+  if (window.innerHeight - y < 100) y = window.innerHeight - 100
+
+  contextMenuStyle.value = {
+    left: x + 'px',
+    top: y + 'px'
+  }
+  contextMenuVisible.value = true
+}
+
+const hideContextMenu = () => {
+  contextMenuVisible.value = false
+  contextMenuTask.value = null
+}
+
+// 【修复：分离模板和逻辑，并正确访问 .value 内的数据】
+const handleContextMenuEdit = () => {
+  if (contextMenuTask.value?.subTask) {
+    startInlineEdit(contextMenuTask.value.subTask)
+  } else {
+    editTask(contextMenuTask.value)
+  }
+  hideContextMenu()
+}
+
+const handleContextMenuDelete = () => {
+  if (contextMenuTask.value?.subTask) {
+    deleteSubTask(contextMenuTask.value.id, contextMenuTask.value.subTask.id)
+  } else {
+    deleteTask(contextMenuTask.value.id)
+  }
+  hideContextMenu()
+}
+
+// 点击其他地方关闭右键菜单
+onMounted(() => {
+  document.addEventListener('click', hideContextMenu)
+  document.addEventListener('contextmenu', (e) => {
+    // 点击非任务区域的右键也应该关闭原有的右键菜单
+    if (contextMenuVisible.value && !e.target.closest('.task-row') && !e.target.closest('.subtask-row')) {
+      hideContextMenu()
+    }
+  })
+})
 
 // 计算属性
 const filteredTasks = computed(() => {
@@ -363,13 +614,15 @@ const filteredTasks = computed(() => {
 const stats = computed(() => {
   const total = tasks.value.length
   const completed = tasks.value.filter(t => t.status === 'completed').length
-  // 进度 = (各任务预估工时 × 各自进度) / 总预估工时
   const totalHours = tasks.value.reduce((sum, t) => sum + (t.estimatedHours || 0), 0)
   const weightedProgress = tasks.value.reduce((sum, t) => sum + ((t.estimatedHours || 0) * (t.progress || 0) / 100), 0)
   const progress = totalHours > 0 ? Math.round((weightedProgress / totalHours) * 100) : 0
-  const endDate = project.value.endDate ? dayjs(project.value.endDate) : dayjs()
-  const daysLeft = Math.max(0, endDate.diff(dayjs(), 'day'))
-  // 项目逾期：进度<100%且有逾期任务
+  // 使用 tasks 中最早截止日期计算剩余天数
+  const uncompletedTasks = tasks.value.filter(t => t.status !== 'completed' && t.planEndDate)
+  const earliestEndDate = uncompletedTasks.length > 0
+    ? dayjs(Math.min(...uncompletedTasks.map(t => new Date(t.planEndDate).getTime())))
+    : null
+  const daysLeft = earliestEndDate ? Math.max(0, earliestEndDate.diff(dayjs(), 'day')) : null
   const isOverdue = progress < 100 && tasks.value.some(t => isTaskOverdue(t))
   return {
     total,
@@ -382,9 +635,7 @@ const stats = computed(() => {
 
 // 加载项目数据
 const loadProject = async () => {
-  if (isNewMode.value) {
-    return
-  }
+  if (isNewMode.value) return
 
   loading.value = true
   try {
@@ -405,7 +656,6 @@ const loadProject = async () => {
     // 计算项目进度
     if (project.value) {
       project.value.progress = stats.value.progress
-      // 进度100%自动完成项目
       if (stats.value.progress >= 100 && project.value.status !== 'completed') {
         project.value.status = 'completed'
         project.value.statusText = '已完成'
@@ -420,16 +670,13 @@ const loadProject = async () => {
   }
 }
 
-// 监听stats变化，自动更新项目状态
 watch(() => stats.value.progress, async (newProgress) => {
   if (!project.value || isNewMode.value) return
-  // 进度100%自动完成项目
   if (newProgress >= 100 && project.value.status !== 'completed') {
     project.value.status = 'completed'
     project.value.statusText = '已完成'
     await projectService.update(project.value.id, { status: 'completed' })
   }
-  // 进度<100且状态为completed时恢复进行中
   else if (newProgress < 100 && project.value.status === 'completed') {
     project.value.status = 'in_progress'
     project.value.statusText = '进行中'
@@ -462,15 +709,47 @@ const handleCreate = async () => {
   }
 }
 
-// 返回列表
 const goBack = () => {
   router.push('/projects')
 }
 
-// 编辑项目
+// 打开编辑项目弹窗
 const goEdit = () => {
-  // 可以扩展为编辑模式
-  MessagePlugin.info('编辑功能开发中')
+  editProjectForm.value = {
+    name: project.value.name || '',
+    description: project.value.description || '',
+    type: project.value.type || 'web'
+  }
+  showEditProjectDialog.value = true
+}
+
+// 提交编辑项目
+const handleEditProject = async () => {
+  try {
+    await formRef.value.validate()
+  } catch {
+    return
+  }
+
+  saving.value = true
+  try {
+    await projectService.update(route.params.id, {
+      name: editProjectForm.value.name,
+      description: editProjectForm.value.description,
+      type: editProjectForm.value.type
+    })
+    // 更新本地数据
+    project.value.name = editProjectForm.value.name
+    project.value.description = editProjectForm.value.description
+    project.value.type = editProjectForm.value.type
+    MessagePlugin.success('项目更新成功')
+    showEditProjectDialog.value = false
+  } catch (error) {
+    console.error('更新项目失败:', error)
+    MessagePlugin.error('更新项目失败')
+  } finally {
+    saving.value = false
+  }
 }
 
 // 添加任务
@@ -506,7 +785,7 @@ const handleAddTask = async () => {
   }
 }
 
-// 编辑任务
+// 【修复：日期反显为格式化字符串而不是 Date 对象】
 const editTask = (task) => {
   editingTaskId.value = task.id
   taskForm.value = {
@@ -517,13 +796,12 @@ const editTask = (task) => {
     status: task.status,
     progress: task.progress,
     estimatedHours: task.estimatedHours || 0,
-    planStartDate: task.planStartDate ? dayjs(task.planStartDate).toDate() : null,
-    planEndDate: task.planEndDate ? dayjs(task.planEndDate).toDate() : null
+    planStartDate: task.planStartDate ? dayjs(task.planStartDate).format('YYYY-MM-DD') : null,
+    planEndDate: task.planEndDate ? dayjs(task.planEndDate).format('YYYY-MM-DD') : null
   }
   showEditTaskDialog.value = true
 }
 
-// 更新任务
 const handleUpdateTask = async () => {
   try {
     await taskFormRef2.value.validate()
@@ -555,7 +833,6 @@ const handleUpdateTask = async () => {
   }
 }
 
-// 切换任务状态
 const toggleTaskStatus = async (task) => {
   const newStatus = task.status === 'completed' ? 'pending' : 'completed'
   const newProgress = newStatus === 'completed' ? 100 : 0
@@ -564,7 +841,6 @@ const toggleTaskStatus = async (task) => {
     task.status = newStatus
     task.progress = newProgress
     task.statusText = { pending: '待开始', in_progress: '进行中', completed: '已完成' }[newStatus]
-    // 更新进度
     project.value.progress = stats.value.progress
   } catch (error) {
     console.error('更新状态失败:', error)
@@ -572,12 +848,10 @@ const toggleTaskStatus = async (task) => {
   }
 }
 
-// 进度变更
 const handleProgressChange = async (task, progress) => {
   try {
     await projectService.updateTask(task.id, { progress })
     task.progress = progress
-    // 进度到100自动完成
     if (progress >= 100 && task.status !== 'completed') {
       task.status = 'completed'
       task.statusText = '已完成'
@@ -585,7 +859,6 @@ const handleProgressChange = async (task, progress) => {
       task.status = 'in_progress'
       task.statusText = '进行中'
     }
-    // 更新项目进度
     project.value.progress = stats.value.progress
   } catch (error) {
     console.error('更新进度失败:', error)
@@ -593,7 +866,6 @@ const handleProgressChange = async (task, progress) => {
   }
 }
 
-// 删除任务
 const deleteTask = async (taskId) => {
   try {
     await projectService.deleteTask(taskId)
@@ -606,13 +878,44 @@ const deleteTask = async (taskId) => {
 }
 
 // 工具函数
+// 类型文本和颜色
+const getProjectTypeText = (type) => {
+  const map = { web: 'Web应用', mobile: '移动应用', desktop: '桌面应用', ai: 'AI项目', other: '其他' }
+  return map[type] || type || '其他'
+}
+const getProjectTypeTheme = (type) => {
+  const map = { web: 'primary', mobile: 'warning', desktop: 'primary', ai: 'success', other: 'default' }
+  return map[type] || 'default'
+}
+
+// 优先级颜色：红色(紧急), 橙色(中等), 蓝色(低)
 const getPriorityType = (p) => ({ high: 'danger', medium: 'warning', low: 'primary' }[p] || 'default')
-const getStatusType = (s) => ({ completed: 'success', in_progress: 'primary', pending: 'default' }[s] || 'default')
-const getCategoryType = (c) => ({ dev: 'primary', meeting: 'warning', doc: 'success', design: 'purple', debug: 'danger', bug: 'danger' }[c] || 'default')
+
+// 状态颜色：灰色(待开始), 蓝色(进行中), 绿色(已完成), 红色(逾期)
+const getStatusType = (s) => {
+  const types = {
+    pending: 'default',      // 灰色 - 待开始
+    in_progress: 'primary',  // 蓝色 - 进行中
+    completed: 'success'     // 绿色 - 已完成
+  }
+  return types[s] || 'default'
+}
+
+// 分类颜色：开发(蓝), 会议(橙), 文档(绿), 设计(紫), 调试(红), BUG(红)
+const getCategoryType = (c) => {
+  const types = {
+    dev: 'primary',      // 蓝色 - 开发
+    meeting: 'warning',  // 橙色 - 会议
+    doc: 'success',      // 绿色 - 文档
+    design: 'purple',    // 紫色 - 设计
+    debug: 'danger',     // 红色 - 调试
+    bug: 'danger'        // 红色 - BUG
+  }
+  return types[c] || 'default'
+}
+
 const isOverdue = (date) => date && dayjs(date).isBefore(dayjs(), 'day')
 const isTaskOverdue = (task) => task.planEndDate && !task.status?.includes('completed') && dayjs(task.planEndDate).isBefore(dayjs(), 'day')
-
-import { AddIcon, EditIcon, SearchIcon, DeleteIcon, ArrowLeftIcon } from 'tdesign-icons-vue-next'
 
 // 监听路由变化
 watch(() => route.params.id, loadProject)
@@ -621,7 +924,7 @@ onMounted(loadProject)
 </script>
 
 <style scoped>
-/* 页面容器 - 与项目列表页保持一致 */
+/* 页面容器 */
 .projects-page {
   padding: var(--space-6);
   max-width: var(--content-max-width);
@@ -629,7 +932,7 @@ onMounted(loadProject)
   animation: fadeIn 0.5s ease;
 }
 
-/* 页面头部 - 与其他页面保持一致 */
+/* 页面头部 */
 .page-header {
   margin-bottom: var(--space-6);
 }
@@ -639,6 +942,7 @@ onMounted(loadProject)
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-6);
+  width: 100%;
 }
 
 .page-title {
@@ -676,7 +980,6 @@ onMounted(loadProject)
   margin-bottom: 24px;
   animation: fadeInUp 0.5s ease;
 }
-.header-content { display: flex; justify-content: space-between; align-items: flex-start; flex: 1; }
 .project-info { display: flex; gap: 20px; align-items: center; flex: 1; }
 .project-icon { width: 64px; height: 64px; border-radius: var(--radius-xl); background: var(--gradient-primary); display: flex; align-items: center; justify-content: center; color: white; font-size: 28px; font-weight: 700; flex-shrink: 0; }
 .project-text { flex: 1; min-width: 0; }
@@ -701,13 +1004,177 @@ onMounted(loadProject)
 }
 .tasks-content { padding-top: 16px; }
 .tasks-filters { display: flex; gap: 12px; margin-bottom: 16px; }
+
+/* 任务列表容器 */
+.task-list-container {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 主任务行 */
+.task-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
+  transition: background-color 0.2s;
+}
+
+.task-row:hover {
+  background: var(--bg-hover);
+}
+
+.task-row.expanded {
+  background: var(--bg-page);
+  border-bottom-color: var(--border-color);
+}
+
+.task-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.expand-icon {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--text-tertiary);
+  transition: color 0.2s;
+}
+
+.expand-icon:hover {
+  color: var(--text-primary);
+}
+
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.subtask-count {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.overdue-text {
+  font-size: 12px;
+  color: var(--error-color);
+}
+
+.progress-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 36px;
+}
+
+.hours-text, .date-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 45px;
+}
+
+/* 子任务列表 */
+.subtask-list {
+  background: var(--bg-page);
+  padding: 8px 16px 8px 56px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.subtask-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  transition: background-color 0.2s;
+}
+
+.subtask-row:hover {
+  background: var(--bg-hover);
+}
+
+.subtask-row.completed .subtask-title {
+  text-decoration: line-through;
+  color: var(--text-tertiary);
+}
+
+.subtask-title {
+  cursor: pointer;
+  flex: 1;
+}
+
+.subtask-title:hover {
+  color: var(--text-primary);
+}
+
+/* 添加子任务 */
+.subtask-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.subtask-add:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* 修复后的右键菜单统一样式 */
+.custom-context-menu {
+  position: fixed;
+  background: var(--bg-container, #ffffff);
+  border: 1px solid var(--border-color, #e7e7e7);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 120px;
+  z-index: 9999;
+}
+
+.custom-context-menu .menu-item {
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary, #333);
+  transition: background-color 0.2s;
+}
+
+.custom-context-menu .menu-item:hover {
+  background: var(--bg-hover, #f3f3f3);
+}
+
+.custom-context-menu .menu-item.error {
+  color: var(--error-color, #d54941);
+}
+
 .task-cell { display: flex; align-items: center; gap: 12px; }
 .task-cell .completed { text-decoration: line-through; color: var(--text-tertiary); }
 .assignee-cell { display: flex; align-items: center; gap: 8px; }
 .avatar { width: 28px; height: 28px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 600; }
 .overdue { color: var(--error-color); }
-.progress-cell { display: flex; align-items: center; gap: 8px; }
-.progress-text { font-size: 12px; color: var(--text-secondary); min-width: 36px; }
 .project-title-row { display: flex; align-items: center; gap: 12px; }
 
 @keyframes fadeInUp {

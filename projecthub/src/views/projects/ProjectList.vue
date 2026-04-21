@@ -77,9 +77,12 @@
           <div class="project-icon" :style="{ background: project.color }">
             {{ project.name.charAt(0) }}
           </div>
-          <t-tag :theme="project.status === 'completed' ? 'success' : project.status === 'overdue' ? 'danger' : 'primary'" variant="light">
-            {{ project.statusText }}
-          </t-tag>
+          <div class="project-tags">
+            <t-tag :theme="getTypeTheme(project.type)" variant="outline" size="small">{{ project.typeText }}</t-tag>
+            <t-tag :theme="project.status === 'completed' ? 'success' : project.status === 'overdue' ? 'danger' : 'primary'" variant="light" size="small">
+              {{ project.statusText }}
+            </t-tag>
+          </div>
         </div>
         <h3 class="project-name">{{ project.name }}</h3>
         <p class="project-desc">{{ project.description }}</p>
@@ -121,6 +124,7 @@
         <thead>
           <tr>
             <th>项目名称</th>
+            <th>类型</th>
             <th>状态</th>
             <th>进度</th>
             <th>任务</th>
@@ -140,6 +144,9 @@
                   <span class="project-desc-text">{{ project.description }}</span>
                 </div>
               </div>
+            </td>
+            <td>
+              <t-tag :theme="getTypeTheme(project.type)" variant="outline" size="small">{{ project.typeText }}</t-tag>
             </td>
             <td>
               <t-tag :theme="project.status === 'completed' ? 'success' : project.status === 'overdue' ? 'danger' : 'primary'" variant="light">
@@ -183,16 +190,6 @@
     </div>
 
     <!-- 空状态 -->
-    <div v-if="filteredProjects.length === 0 && projects.length > 0" class="empty-state">
-      <div class="empty-icon">
-        <svg viewBox="0 0 24 24" fill="none" width="32" height="32">
-          <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-      <h3 class="empty-title">未找到匹配的项目</h3>
-      <p class="empty-description">请尝试调整筛选条件或搜索关键字</p>
-    </div>
-
     <!-- 新建项目弹窗 -->
     <t-dialog v-model:visible="showCreateDialog" header="创建新项目" :footer="false" width="500px" @close="showCreateDialog = false">
       <t-form :model="createForm" :rules="createRules" ref="formRef" @submit="handleCreate" label-width="100px">
@@ -293,6 +290,30 @@ const getStatusText = (status) => {
   return map[status] || status
 }
 
+// 类型文本映射
+const getTypeText = (type) => {
+  const map = {
+    'web': 'Web应用',
+    'mobile': '移动应用',
+    'desktop': '桌面应用',
+    'ai': 'AI项目',
+    'other': '其他'
+  }
+  return map[type] || type || '其他'
+}
+
+// 类型颜色
+const getTypeTheme = (type) => {
+  const map = {
+    'web': 'primary',
+    'mobile': 'warning',
+    'desktop': 'primary',
+    'ai': 'success',
+    'other': 'default'
+  }
+  return map[type] || 'default'
+}
+
 // 加载项目数据
 const loadProjects = async () => {
   loading.value = true
@@ -308,10 +329,12 @@ const loadProjects = async () => {
       description: p.description || p.customer || '暂无描述',
       status: p.status,
       statusText: getStatusText(p.status),
+      type: p.type,
+      typeText: getTypeText(p.type),
       progress: p.progress || 0,
       tasks: p.taskCount || p.tasks?.length || 0,
       completedTasks: p.completedTaskCount || 0,
-      dueDate: p.completedAt ? dayjs(p.completedAt).format('YYYY年MM月DD日') : '未设置',
+      dueDate: p.maxPlanEndDate ? dayjs(p.maxPlanEndDate).format('YYYY年MM月DD日') : '未设置',
       color: projectColors[index % projectColors.length],
       createdAt: p.createdAt,
       updatedAt: p.updatedAt
@@ -579,6 +602,13 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--space-4);
+}
+
+.project-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .project-icon {

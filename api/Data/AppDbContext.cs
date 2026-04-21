@@ -28,6 +28,9 @@ public class AppDbContext : DbContext
     public DbSet<Comic> Comics => Set<Comic>();
     public DbSet<ComicChapter> ComicChapters => Set<ComicChapter>();
 
+    // 子任务模块
+    public DbSet<SubTask> SubTasks => Set<SubTask>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -188,6 +191,20 @@ public class AppDbContext : DbContext
             entity.HasOne(c => c.Comic)
                   .WithMany(m => m.Chapters)
                   .HasForeignKey(c => c.ComicId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ===== 子任务模块配置 =====
+
+        // SubTask 配置
+        modelBuilder.Entity<SubTask>(entity =>
+        {
+            entity.HasIndex(e => e.ParentTaskId);
+            entity.HasIndex(e => e.SortOrder);
+
+            entity.HasOne(s => s.ParentTask)
+                  .WithMany(t => t.SubTasks)
+                  .HasForeignKey(s => s.ParentTaskId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }
