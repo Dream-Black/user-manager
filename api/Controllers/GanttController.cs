@@ -30,8 +30,7 @@ public class GanttController : ControllerBase
         var tasks = await _context.Tasks
             .Include(t => t.Project)
             .Where(t =>
-                t.Status != "archived" &&
-                t.Status != "completed" && // 排除已完成的任务
+                t.Status != "archived" && // 只排除归档任务
                 ((t.PlanStartDate != null && t.PlanStartDate <= end) || (t.PlanEndDate != null && t.PlanEndDate >= start)) ||
                 t.PlanStartDate == null && t.PlanEndDate == null)
             .OrderBy(t => t.ProjectId)
@@ -48,7 +47,8 @@ public class GanttController : ControllerBase
                 t.Status,
                 t.Priority,
                 t.Category,
-                t.Progress
+                t.Progress,
+                t.EstimatedHours
             })
             .ToListAsync();
 
@@ -68,7 +68,8 @@ public class GanttController : ControllerBase
             t.Status,
             t.Priority,
             t.Category,
-            t.Progress
+            t.Progress,
+            t.EstimatedHours
         }).ToList();
 
         return Ok(new

@@ -70,6 +70,11 @@
                   background: project.color
                 }"
               >
+                <!-- 进度填充 -->
+                <div
+                  class="task-progress"
+                  :style="{ width: (project.progress || 0) + '%' }"
+                ></div>
                 <span class="bar-label">{{ project.progress }}%</span>
               </div>
             </div>
@@ -90,6 +95,7 @@
                 class="task-bar"
                 :class="{
                   completed: task.status === 'completed',
+                  overdue: isOverdue(task),
                   dragging: draggingTask?.id === task.id && dragType === 'move',
                   'resizing-left': draggingTask?.id === task.id && dragType === 'left',
                   'resizing-right': draggingTask?.id === task.id && dragType === 'right'
@@ -97,10 +103,18 @@
                 :style="{
                   left: (tempTaskPositions[task.id]?.left ?? getLeftPosition(task.startDate)) + 'px',
                   width: (tempTaskPositions[task.id]?.width ?? getWidth(task.startDate, task.endDate)) + 'px',
-                  background: task.status === 'completed' ? '#10B981' : project.color
+                  background: getTaskBarColor(task, project.color)
                 }"
                 @mousedown.stop="onTaskBarMouseDown($event, project, task)"
               >
+                <!-- 进度填充 -->
+                <div
+                  class="task-progress"
+                  :style="{
+                    width: (task.progress || 0) + '%',
+                    background: getProgressColor(task)
+                  }"
+                ></div>
                 <div
                   class="resize-handle resize-handle-left"
                   :class="{ active: draggingTask?.id === task.id && dragType === 'left' }"
@@ -108,7 +122,10 @@
                 >
                   <span class="resize-arrow">&#x2194;</span>
                 </div>
-                <span class="bar-label">{{ task.name }}</span>
+                <span class="bar-label">
+                  {{ task.name }}
+                  <span v-if="task.progress > 0" class="progress-text">({{ task.progress }}%)</span>
+                </span>
                 <div
                   class="resize-handle resize-handle-right"
                   :class="{ active: draggingTask?.id === task.id && dragType === 'right' }"
@@ -400,7 +417,8 @@ const loadGanttData = async () => {
         startDate: task.planStartDate,
         endDate: task.planEndDate,
         status: task.status,
-        progress: task.progress || 0
+        progress: task.progress || 0,
+        estimatedHours: task.estimatedHours || 0
       })
 
       if (task.planStartDate && (!project.startDate || dayjs(task.planStartDate).isBefore(project.startDate))) {
@@ -414,8 +432,15 @@ const loadGanttData = async () => {
     projectMap.forEach(project => {
       if (project.tasks.length > 0) {
         const totalHours = project.tasks.reduce((sum, t) => sum + (t.estimatedHours || 0), 0)
-        const weightedProgress = project.tasks.reduce((sum, t) => sum + ((t.estimatedHours || 0) * (t.progress || 0) / 100), 0)
-        project.progress = totalHours > 0 ? Math.round((weightedProgress / totalHours) * 100) : 0
+        if (totalHours > 0) {
+          // 有预估工时：按工时加权
+          const weightedProgress = project.tasks.reduce((sum, t) => sum + ((t.estimatedHours || 0) * (t.progress || 0) / 100), 0)
+          project.progress = Math.round((weightedProgress / totalHours) * 100)
+        } else {
+          // 无预估工时：按任务数加权
+          const totalProgress = project.tasks.reduce((sum, t) => sum + (t.progress || 0), 0)
+          project.progress = Math.round(totalProgress / project.tasks.length)
+        }
       }
     })
 
@@ -447,6 +472,26 @@ onUnmounted(() => {
 
 // ============ 工具函数 ============
 
+// 判断任务是否延期
+const isOverdue = (task) => {
+  if (task.status === 'completed') return false
+  if (!task.endDate) return false
+  return dayjs(task.endDate).isBefore(today, 'day')
+}
+
+// 根据任务状态获取颜色
+const getTaskBarColor = (task, projectColor) => {
+  if (task.status === 'completed') return '#10B981' // 完成青色
+  if (isOverdue(task)) return '#EF4444' // 延期红色
+  if (task.status === 'in_progress' || task.status === 'pending') return '#4A90D9' // 进行中蓝色
+  return '#9CA3AF' // 未开始灰色
+}
+
+// 获取进度条颜色（半透明白色）
+const getProgressColor = (task) => {
+  return 'rgba(255, 255, 255, 0.4)'
+}
+
 const dateRange = computed(() => {
   const days = []
   let current = dateRangeStart.value
@@ -465,17 +510,29 @@ const todayPosition = computed(() => {
 
 const getLeftPosition = (date) => {
   const startDate = dateRangeStart.value
-  // 重点修复 2: 日期转换时同样抹平到 00:00:00 避免精度损失
   const currentDate = dayjs(date).startOf('day')
   const days = currentDate.diff(startDate, 'day')
-  return days * dayWidth.value
+  // 限制最小为 0，防止任务条超出左边界
+  return Math.max(0, days * dayWidth.value)
 }
 
 const getWidth = (startDate, endDate) => {
   const start = dayjs(startDate).startOf('day')
   const end = dayjs(endDate).startOf('day')
-  const days = end.diff(start, 'day') + 1
-  return days * dayWidth.value
+  const timelineStart = dateRangeStart.value
+  const timelineEnd = dateRangeEnd.value
+  
+  // 计算任务在时间轴内的有效开始/结束
+  const effectiveStart = start.isBefore(timelineStart) ? timelineStart : start
+  const effectiveEnd = end.isAfter(timelineEnd) ? timelineEnd : end
+  
+  // 如果完全在时间轴外，返回 0
+  if (effectiveStart.isAfter(timelineEnd) || effectiveEnd.isBefore(timelineStart)) {
+    return 0
+  }
+  
+  const days = effectiveEnd.diff(effectiveStart, 'day') + 1
+  return Math.max(0, days * dayWidth.value)
 }
 
 const isToday = (date) => dayjs(date).isSame(today, 'day')
@@ -563,6 +620,24 @@ const monthGroups = computed(() => {
   user-select: none;
   cursor: grab;
   z-index: 1;
+  overflow: hidden;
+}
+
+/* 进度填充条 */
+.task-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: -1;
+  border-radius: var(--radius-md);
+}
+
+/* 进度文字 */
+.progress-text {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.9;
 }
 
 /* 边缘调整区域 */
