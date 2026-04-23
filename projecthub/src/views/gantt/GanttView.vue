@@ -5,14 +5,6 @@
         <h1 class="page-title">甘特图</h1>
         <p class="page-subtitle">可视化项目进度和时间安排</p>
       </div>
-      <div class="header-actions">
-        <t-button variant="outline" @click="zoomOut">缩小</t-button>
-        <t-button variant="outline" @click="zoomIn">放大</t-button>
-        <t-button theme="primary">
-          <template #icon><AddIcon /></template>
-          添加任务
-        </t-button>
-      </div>
     </div>
 
     <div v-if="loading" class="gantt-loading">
@@ -156,7 +148,6 @@
 import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
 import dayjs from 'dayjs'
 import { ganttService, taskService } from '@/services/dataService'
-import { AddIcon } from 'tdesign-icons-vue-next'
 
 const dayWidth = ref(40)
 const loading = ref(true)
@@ -181,9 +172,6 @@ const saveStatus = ref(null) // null | 'saving' | 'saved' | 'error'
 
 // 防抖定时器
 let debounceTimer = null
-
-const zoomIn = () => { dayWidth.value = Math.min(80, dayWidth.value + 10) }
-const zoomOut = () => { dayWidth.value = Math.max(20, dayWidth.value - 10) }
 
 // ============ 拖拽逻辑 ============
 
@@ -570,7 +558,7 @@ const monthGroups = computed(() => {
 </script>
 
 <style scoped>
-.gantt-page { max-width: 100%; overflow-x: auto; padding: 0 24px; }
+.gantt-page { max-width: calc(100% - 48px); overflow: hidden; padding: 0 24px; }
 .gantt-loading { display: flex; justify-content: center; align-items: center; min-height: 400px; background: var(--bg-container); border-radius: var(--radius-xl); }
 .gantt-empty { display: flex; justify-content: center; align-items: center; min-height: 400px; background: var(--bg-container); border-radius: var(--radius-xl); }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; animation: fadeInUp 0.5s ease; }
