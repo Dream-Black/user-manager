@@ -1,14 +1,16 @@
 <template>
-  <div class="app-layout">
-    <Sidebar v-if="showSidebar" />
-    <div class="main-wrapper" :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
-      <Header v-if="showHeader" />
+  <div class="app-layout" :class="{ 'app-layout--blank': !showChrome }">
+    <Sidebar v-if="showChrome" />
+    <div class="main-wrapper" :class="{ 'sidebar-collapsed': showChrome && isSidebarCollapsed, 'main-wrapper--blank': !showChrome }">
+      <Header v-if="showChrome" />
       <main class="main-content">
-        <router-view v-slot="{ Component }">
-          <transition name="fade" mode="out-in">
-            <component :is="Component" />
-          </transition>
-        </router-view>
+        <div class="page-shell">
+          <router-view v-slot="{ Component }">
+            <transition name="fade" mode="out-in">
+              <component :is="Component" />
+            </transition>
+          </router-view>
+        </div>
       </main>
     </div>
   </div>
@@ -19,27 +21,22 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from './components/layout/Sidebar.vue'
 import Header from './components/layout/Header.vue'
+import { initLayoutState, useLayoutState } from './composables/useLayoutState'
+
+initLayoutState()
 
 const route = useRoute()
+const { isSidebarCollapsed } = useLayoutState()
 
-const showSidebar = computed(() => {
-  // 登录页等特殊页面不显示侧边栏
-  const noSidebarRoutes = ['/login', '/register', '/404']
-  return !noSidebarRoutes.includes(route.path)
-})
+const noChromeRouteNames = new Set(['Login', 'Register'])
+const noChromeRoutePaths = new Set(['/login', '/register', '/404'])
 
-const showHeader = computed(() => {
-  const noHeaderRoutes = ['/login', '/register', '/404']
-  return !noHeaderRoutes.includes(route.path)
-})
-
-const isSidebarCollapsed = computed(() => {
-  return localStorage.getItem('sidebarCollapsed') === 'true'
+const showChrome = computed(() => {
+  return !(noChromeRouteNames.has(route.name) || noChromeRoutePaths.has(route.path) || route.meta?.layout === 'blank')
 })
 </script>
 
 <style>
-/* 全局样式 */
 .app-layout {
   display: flex;
   min-height: 100vh;
@@ -59,6 +56,10 @@ const isSidebarCollapsed = computed(() => {
   margin-left: var(--sidebar-collapsed);
 }
 
+.main-wrapper--blank {
+  margin-left: 0;
+}
+
 .main-content {
   flex: 1;
   padding: 0;
@@ -66,7 +67,24 @@ const isSidebarCollapsed = computed(() => {
   overflow-x: hidden;
 }
 
-/* 页面切换动画 */
+.page-shell {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.app-layout--blank .main-content {
+  margin-top: 0;
+}
+
+.app-layout--blank .page-shell {
+  max-width: none;
+  min-height: 100vh;
+  padding: 0;
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.3s ease, transform 0.3s ease;
@@ -82,28 +100,9 @@ const isSidebarCollapsed = computed(() => {
   transform: translateY(-10px);
 }
 
-/* 滚动条 */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--primary-light);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--primary-color);
-}
-
-/* 选中文字 */
-::selection {
-  background: var(--primary-light);
-  color: var(--primary-dark);
-}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--primary-light); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--primary-color); }
+::selection { background: var(--primary-light); color: var(--primary-dark); }
 </style>
