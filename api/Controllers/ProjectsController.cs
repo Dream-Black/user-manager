@@ -69,7 +69,6 @@ public class ProjectsController : ControllerBase
     {
         var project = await _context.Projects
             .Include(p => p.Tasks.Where(t => t.Status != "archived"))
-            .Include(p => p.Reviews)
             .Include(p => p.Timelines.OrderByDescending(t => t.OccurredAt))
             .FirstOrDefaultAsync(p => p.Id == id);
 

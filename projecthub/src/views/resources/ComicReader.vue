@@ -1,94 +1,93 @@
 <template>
-  <div 
-    class="comic-reader-page"
+  <div
+    class="comic-reader-page page-shell"
     ref="pageRef"
     @mousemove="showHeader = true"
     @mouseleave="showHeader = false"
   >
-    <!-- 顶部导航（绝对定位，鼠标移入显示） -->
-    <div class="reader-header" :class="{ visible: showHeader }">
-      <div class="header-left">
-        <t-button theme="default" variant="text" @click="goBack">
-          <template #icon><t-icon name="return" /></template>
-          返回
-        </t-button>
-      </div>
-      
-      <div class="header-center">
-        <span class="comic-title">{{ comic?.displayName || '加载中...' }}</span>
-      </div>
-      
-      <div class="header-right">
-        <span class="page-info">{{ currentPageDisplay }} / {{ totalPageCount }}</span>
-        <t-button theme="default" variant="text" @click="toggleFullscreen">
-          <template #icon>
-            <t-icon :name="isFullscreen ? 'compress' : 'fullscreen'" />
-          </template>
-        </t-button>
-      </div>
-    </div>
+    <div class="reader-frame card-shell">
+      <div class="reader-header" :class="{ visible: showHeader }">
+        <div class="header-left">
+          <t-button theme="default" variant="text" @click="goBack">
+            <template #icon><t-icon name="return" /></template>
+            返回
+          </t-button>
+        </div>
 
-    <!-- 阅读区域 -->
-    <div 
-      class="reader-content"
-      ref="contentRef"
-      @click="handleContentClick"
-      @keydown="handleKeydown"
-      tabindex="0"
-    >
-      <!-- 条漫模式：图片宽度50vw，一个个接在下面 -->
-      <div v-if="viewMode === 'scroll'" class="scroll-container">
-        <div 
-          v-for="(page, index) in allPages" 
-          :key="`${page.chapterIndex}-${index}`"
-          class="page-item"
-        >
-          <img 
-            :src="getPageUrl(page)"
-            :alt="`${page.chapterName} 第${index + 1}页`"
+        <div class="header-center">
+          <div class="reader-meta">
+            <p class="section-kicker">资源管理</p>
+            <span class="comic-title">{{ comic?.displayName || '加载中...' }}</span>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <span class="page-info">{{ currentPageDisplay }} / {{ totalPageCount }}</span>
+          <t-button theme="default" variant="text" @click="toggleFullscreen">
+            <template #icon>
+              <t-icon :name="isFullscreen ? 'compress' : 'fullscreen'" />
+            </template>
+          </t-button>
+        </div>
+      </div>
+
+      <div
+        class="reader-content"
+        ref="contentRef"
+        @click="handleContentClick"
+        @keydown="handleKeydown"
+        tabindex="0"
+      >
+        <div v-if="viewMode === 'scroll'" class="scroll-container">
+          <div
+            v-for="(page, index) in allPages"
+            :key="`${page.chapterIndex}-${index}`"
+            class="page-item"
+          >
+            <img
+              :src="getPageUrl(page)"
+              :alt="`${page.chapterName} 第${index + 1}页`"
+              @error="handleImageError"
+              loading="lazy"
+            />
+          </div>
+        </div>
+
+        <div v-else class="page-container">
+          <img
+            v-if="currentPageData"
+            :src="getPageUrl(currentPageData)"
+            :alt="`${currentPageData.chapterName} 第${currentPageData.pageIndex + 1}页`"
             @error="handleImageError"
-            loading="lazy"
           />
+
+          <div v-if="allPages.length === 0" class="loading-state">
+            <t-loading size="large" text="加载中..." />
+          </div>
         </div>
       </div>
 
-      <!-- 页漫模式：图片撑满页面 -->
-      <div v-else class="page-container">
-        <img 
-          v-if="currentPageData"
-          :src="getPageUrl(currentPageData)"
-          :alt="`${currentPageData.chapterName} 第${currentPageData.pageIndex + 1}页`"
-          @error="handleImageError"
-        />
-        
-        <div v-if="allPages.length === 0" class="loading-state">
-          <t-loading size="large" text="加载中..." />
-        </div>
+      <div v-if="viewMode === 'page' && showHeader" class="page-nav">
+        <t-button
+          variant="outline"
+          :disabled="currentPageIndex <= 0"
+          @click.stop="prevPage"
+        >
+          <template #icon><t-icon name="chevron-left" /></template>
+          上一张
+        </t-button>
+
+        <t-button
+          variant="outline"
+          :disabled="currentPageIndex >= allPages.length - 1"
+          @click.stop="nextPage"
+        >
+          下一张
+          <template #icon><t-icon name="chevron-right" /></template>
+        </t-button>
       </div>
     </div>
 
-    <!-- 页漫模式底部导航（鼠标移入显示） -->
-    <div v-if="viewMode === 'page' && showHeader" class="page-nav">
-      <t-button 
-        variant="outline" 
-        :disabled="currentPageIndex <= 0"
-        @click.stop="prevPage"
-      >
-        <template #icon><t-icon name="chevron-left" /></template>
-        上一张
-      </t-button>
-      
-      <t-button 
-        variant="outline" 
-        :disabled="currentPageIndex >= allPages.length - 1"
-        @click.stop="nextPage"
-      >
-        下一张
-        <template #icon><t-icon name="chevron-right" /></template>
-      </t-button>
-    </div>
-
-    <!-- 加载状态 -->
     <div v-if="loading" class="loading-overlay">
       <t-loading size="large" text="加载中..." />
     </div>
@@ -382,31 +381,47 @@ watch(viewMode, (newMode) => {
 .comic-reader-page {
   position: relative;
   width: 100%;
-  height: 100vh;
-  background: #1a1a1a;
+  min-height: calc(100vh - var(--header-height, 64px));
+  background: linear-gradient(180deg, var(--bg-page) 0%, #eef4ff 100%);
+  padding: var(--space-6);
   overflow: hidden;
 }
 
-/* 顶部导航 - 绝对定位，鼠标移入显示 */
+.page-shell {
+  animation: fadeInUp 0.45s ease;
+}
+
+.card-shell {
+  background: rgba(255,255,255,0.92);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-card);
+}
+
+.reader-frame {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - var(--header-height, 64px) - var(--space-12));
+  overflow: hidden;
+}
+
 .reader-header {
-  position: absolute;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
+  z-index: 10;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 24px;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8), transparent);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  pointer-events: none;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid var(--border-light);
+  opacity: 0.96;
+  transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
 .reader-header.visible {
   opacity: 1;
-  pointer-events: auto;
 }
 
 .header-left,
@@ -418,56 +433,66 @@ watch(viewMode, (newMode) => {
 
 .header-center {
   flex: 1;
-  text-align: center;
+  display: flex;
+  justify-content: center;
+}
+
+.reader-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.section-kicker {
+  font-size: var(--font-size-xs);
+  color: var(--primary-color);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 2px;
 }
 
 .comic-title {
-  font-size: 16px;
-  font-weight: 500;
-  color: #fff;
-  max-width: 300px;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  max-width: 420px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .page-info {
-  font-size: 14px;
-  color: #fff;
-  padding: 4px 12px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  background: var(--primary-lighter);
+  border: 1px solid var(--primary-light);
+  border-radius: var(--radius-full);
 }
 
-/* 阅读区域 */
 .reader-content {
   width: 100%;
-  height: 100%;
+  height: calc(100% - 72px);
   outline: none;
+  overflow: auto;
 }
 
-.reader-content.scroll-mode {
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.reader-content.page-mode {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-/* 条漫模式：图片宽度50vw */
 .scroll-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px 0;
+  gap: var(--space-4);
+  padding: var(--space-6) 0 var(--space-8);
 }
 
 .page-item {
-  margin-bottom: 8px;
-  width: 50vw;
+  width: min(720px, 82vw);
+  background: white;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 .page-item img {
@@ -475,37 +500,44 @@ watch(viewMode, (newMode) => {
   display: block;
 }
 
-/* 页漫模式：图片撑满页面 */
 .page-container {
   width: 100%;
   height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
+  padding: var(--space-6);
 }
 
 .page-container img {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  background: white;
 }
 
 .loading-state {
-  color: #888;
+  color: var(--text-secondary);
 }
 
-/* 页漫模式底部导航 */
 .page-nav {
   position: absolute;
-  bottom: 20px;
+  bottom: var(--space-5);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 16px;
+  gap: 12px;
   z-index: 100;
+  padding: 10px;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-md);
 }
 
-/* 加载状态 */
 .loading-overlay {
   position: absolute;
   top: 0;
@@ -515,29 +547,38 @@ watch(viewMode, (newMode) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(255, 255, 255, 0.6);
   z-index: 200;
+  backdrop-filter: blur(6px);
 }
 
-/* 移动端适配 */
 @media (max-width: 768px) {
+  .comic-reader-page {
+    padding: var(--space-3);
+  }
+
+  .reader-frame {
+    height: calc(100vh - var(--header-height, 64px) - var(--space-6));
+  }
+
   .reader-header {
-    padding: 8px 12px;
+    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
   }
-  
+
   .comic-title {
-    font-size: 14px;
-    max-width: 150px;
+    max-width: 220px;
+    font-size: var(--font-size-sm);
   }
-  
+
   .page-nav {
-    bottom: 12px;
-    gap: 12px;
+    bottom: var(--space-3);
+    gap: 8px;
+    padding: 8px;
   }
-  
-  /* 移动端条漫宽度调整为70vw */
+
   .page-item {
-    width: 70vw;
+    width: 92vw;
   }
 }
 </style>

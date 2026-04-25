@@ -27,6 +27,10 @@
   --bg-color: #FFFFFF;             /* 基础背景 */
   --bg-hover: #F1F5F9;             /* hover 背景 */
   --bg-container: #FFFFFF;         /* 容器背景 */
+  --panel-surface: rgba(255, 255, 255, 0.9);
+  --panel-surface-strong: #FFFFFF;
+  --panel-border: rgba(226, 232, 240, 0.9);
+  --page-gradient: linear-gradient(180deg, #F8FAFC 0%, #EEF4FF 100%);
 
   /* ========== 边框色 ========== */
   --border-color: #E2E8F0;          /* 边框色 */

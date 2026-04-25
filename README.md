@@ -1,540 +1,98 @@
-# ProjectHub - 项目管理与资源管理平台
+# ProjectHub / AI Claw
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Vue-3.5+-4FC08D?style=flat&logo=vue.js&logoColor=white" />
-  <img src="https://img.shields.io/badge/ASP.NET_Core-9.0-512BD4?style=flat&logo=.net&logoColor=white" />
-  <img src="https://img.shields.io/badge/MySQL-8.0-4479A1?style=flat&logo=mysql&logoColor=white" />
-  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat&logo=docker&logoColor=white" />
-</p>
+一个用于个人项目、任务、资源与 AI 辅助分析的工作台。
 
-> 一个功能完善的项目与任务管理平台，支持甘特图、AI 智能助手、资源管理、数据统计等丰富功能。
+## 现在的核心能力
 
----
+- **项目管理**：项目列表、详情、进度概览
+- **任务管理**：创建/编辑/删除、分类、优先级、状态流转、延期、追加需求
+- **时间过程记录**：项目时间线、任务时间线、任务变更日志
+- **AI 助手**：基于项目与任务上下文的分析、问答、建议
+- **资源管理**：电脑、资源路径、漫画/章节/图片浏览
+- **本地代理**：用于访问本机资源与扫描文件结构
 
-## ✨ 功能特性
+## 技术栈
 
-### 🎯 项目管理
+- **前端**：Vue 3 + Vite + Pinia + TDesign
+- **后端**：ASP.NET Core 9 + Entity Framework Core + MySQL
+- **代理服务**：Python FastAPI
+- **部署**：Docker + Docker Compose
 
-| 功能 | 说明 |
-|:-----|:-----|
-| 项目概览 | 仪表盘展示项目进度、任务统计、近期动态 |
-| 甘特图 | 可视化项目时间线，支持拖拽调整任务时间 |
-| 项目评审 | 复盘记录，好评/差评/改进点/下一步行动 |
-| 项目时间线 | 完整记录项目生命周期内的所有重要事件 |
+## 项目结构
 
-### 📋 任务管理
-
-| 功能 | 说明 |
-|:-----|:-----|
-| 任务 CRUD | 创建、编辑、删除任务 |
-| 分类管理 | 开发/会议/文档/设计/调试/缺陷六大分类 |
-| 优先级 | 高/中/低三档优先级 |
-| 状态流转 | 待办 → 进行中 → 已完成 |
-| 延期管理 | 记录延期原因，自动计算新计划时间 |
-| 额外需求 | 已完成任务追加新需求 |
-| 任务时间线 | 详细的任务变更历史记录 |
-
-### 🤖 AI 助手
-
-- 集成 DeepSeek AI 智能分析
-- 项目数据智能解读
-- 任务进度分析与建议
-
-### 📊 数据统计
-
-- 多维度项目统计
-- 可视化图表展示
-- 任务完成率分析
-
-### 🗂️ 资源管理
-
-| 功能 | 说明 |
-|:-----|:-----|
-| 漫画阅读器 | 本地漫画资源管理与在线阅读 |
-| 章节管理 | 自动扫描目录结构 |
-| 缩略图 | Base64 压缩缩略图存储 |
-| 多设备支持 | 通过本地代理服务访问资源 |
-
----
-
-## 🏗️ 技术架构
-
-### 目录结构
-
-```
+```text
 AI Claw/
-├── api/                          # ASP.NET Core 9 后端 API
-│   ├── Controllers/              # API 控制器
-│   │   ├── ProjectsController.cs  # 项目管理
-│   │   ├── TasksController.cs    # 任务管理
-│   │   ├── CategoriesController.cs
-│   │   ├── ReviewsController.cs  # 评审管理
-│   │   ├── TimelinesController.cs
-│   │   ├── GanttController.cs    # 甘特图数据
-│   │   ├── AiController.cs       # AI 助手
-│   │   ├── SettingsController.cs # 系统设置
-│   │   ├── UsersController.cs    # 用户管理
-│   │   ├── ComputersController.cs    # 电脑管理
-│   │   ├── ResourcePathsController.cs # 资源路径
-│   │   └── ComicsController.cs    # 漫画管理
-│   ├── Data/
-│   │   └── AppDbContext.cs       # EF Core 数据库上下文
-│   ├── Models/                   # 数据模型
-│   │   ├── Project.cs
-│   │   ├── ProjectTask.cs
-│   │   ├── TaskCategory.cs
-│   │   ├── Timeline.cs / TaskTimeline.cs
-│   │   ├── TaskDelay.cs
-│   │   ├── TaskExtraRequirement.cs
-│   │   ├── Review.cs
-│   │   ├── User.cs / UserSettings.cs
-│   │   ├── Computer.cs
-│   │   ├── ResourcePath.cs
-│   │   ├── Comic.cs
-│   │   └── ComicChapter.cs
-│   ├── Services/
-│   │   └── AiService.cs          # DeepSeek AI 服务
-│   ├── Filters/
-│   │   └── IgnoreCyclicReferenceSchemaFilter.cs
-│   ├── Migrations/               # EF Core 迁移文件
-│   └── Program.cs                # 应用入口（含数据库自动同步）
-│
-├── projecthub/                   # Vue 3 + Vite 前端
-│   ├── src/
-│   │   ├── components/           # 组件
-│   │   │   ├── layout/           # 布局组件
-│   │   │   │   ├── Sidebar.vue   # 侧边栏
-│   │   │   │   ├── Header.vue    # 顶部导航
-│   │   │   │   └── Footer.vue     # 页脚
-│   │   │   └── common/           # 公共组件
-│   │   ├── views/                # 页面视图
-│   │   │   ├── Dashboard.vue     # 概览
-│   │   │   ├── TaskList.vue      # 任务列表
-│   │   │   ├── ProjectDetail.vue # 项目详情
-│   │   │   ├── GanttChart.vue    # 甘特图
-│   │   │   ├── ReviewList.vue    # 评审列表
-│   │   │   ├── StatsView.vue      # 统计分析
-│   │   │   ├── AiAssistant.vue   # AI 助手
-│   │   │   ├── settings/         # 设置页面
-│   │   │   │   └── SettingsView.vue
-│   │   │   └── resources/        # 资源管理
-│   │   │       ├── ResourceList.vue
-│   │   │       └── ComicReader.vue
-│   │   ├── services/
-│   │   │   └── dataService.js    # API 服务封装
-│   │   ├── stores/               # Pinia 状态管理
-│   │   └── router/
-│   │       └── index.js          # 路由配置
-│   └── nginx.conf
-│
-├── proxy/                        # Python 本地代理服务
-│   ├── main.py                   # FastAPI 服务
-│   ├── scanner.py                # 资源扫描器
-│   ├── config.py                 # 配置管理
-│   └── requirements.txt
-│
-├── scripts/                     # 部署脚本
-├── docker-compose.yml            # 开发环境编排
-├── docker-compose.prod.yml       # 生产环境编排
-├── DEPLOY.md                     # 部署文档
-└── VERSION                       # 版本号文件
+├── api/          # ASP.NET Core API
+├── projecthub/   # Vue 前端
+├── proxy/        # Python 本地代理服务
+├── ai/           # 给 AI 看的项目记忆与协作文档
+├── docker-compose.yml
+├── docker-compose.prod.yml
+└── README.md
 ```
 
-### 技术栈
+## 启动方式
 
-| 层级 | 技术 |
-|:-----|:-----|
-| 前端框架 | Vue 3 + TypeScript + Vite |
-| UI 组件库 | TDesign Vue Next |
-| 状态管理 | Pinia |
-| 后端框架 | ASP.NET Core 9 |
-| ORM | Entity Framework Core 8 |
-| 数据库 | MySQL 8.0 |
-| 容器化 | Docker + Docker Compose |
-| CI/CD | GitHub Actions |
-| AI 服务 | DeepSeek API |
-
-### 系统架构图
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        用户浏览器                            │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-        ┌─────────────┴─────────────┐
-        │                           │
-        ▼                           ▼
-┌───────────────┐          ┌───────────────┐
-│   前端 Vue    │          │  Python 代理   │
-│  (Port 8081) │          │  (Port 6789)   │
-└───────┬───────┘          └───────┬───────┘
-        │                           │
-        │    ┌──────────────────────┘
-        │    │ 本地文件访问
-        ▼    ▼
-┌───────────────┐
-│   ASP.NET     │
-│   Core API    │
-│  (Port 5000)  │
-└───────┬───────┘
-        │
-        ▼
-┌───────────────┐
-│    MySQL      │
-│  (Port 3306)  │
-└───────────────┘
-```
-
----
-
-## 🚀 快速开始
-
-### 环境要求
-
-| 软件 | 版本要求 |
-|:-----|:---------|
-| Docker | 20.10+ |
-| Docker Compose | 2.0+ |
-| Node.js | 22+ (本地开发) |
-| .NET SDK | 9.0 (本地开发) |
-| Python | 3.10+ (本地代理) |
-
-### 一、Docker 部署
-
-```bash
-# 1. 克隆项目
-git clone https://github.com/Dream-Black/ai-claw.git
-cd ai-claw
-
-# 2. 复制并配置环境变量
-cp .env.example .env
-# 编辑 .env 文件
-
-# 3. 启动服务
-docker-compose up -d --build
-
-# 4. 查看服务状态
-docker-compose ps
-```
-
-### 二、本地开发
-
-#### 前端
+### 前端
 
 ```bash
 cd projecthub
 npm install
 npm run dev
-# 访问 http://localhost:3000
 ```
 
-#### 后端
+### 后端
 
 ```bash
 cd api
 dotnet restore
 dotnet run
-# API 运行在 http://localhost:5000
-# Swagger 文档: http://localhost:5000/swagger
 ```
 
-#### 本地代理服务
+### 本地代理
 
 ```bash
 cd proxy
 pip install -r requirements.txt
 python main.py
-# 服务运行在 http://localhost:6789
 ```
 
-### 三、访问应用
+## 关键约定
 
-| 服务 | 地址 |
-|:-----|:-----|
-| 前端 | http://localhost:8081 |
-| API | http://localhost:5000 |
-| Swagger | http://localhost:5000/swagger |
-| 本地代理 | http://localhost:6789 |
+### 1. 后端启动时会同步数据库结构
 
----
+后端在 `api/Program.cs` 中包含数据库自动同步逻辑。启动时会检查表和列是否存在，并按需创建或补齐。
 
-## 📡 API 接口文档
+这意味着：
 
-### 基础信息
+- 开发业务时如果新增模型或字段，必须同步检查 `api/Program.cs`
+- 不要只改实体类而忽略启动时的建表/补列逻辑
+- 新增数据库结构时，要同时更新运行时同步和对应模型
 
-- Base URL: `http://localhost:5000/api`
-- 所有请求/响应默认使用 JSON 格式
-- 日期时间格式: ISO 8601
+### 2. 日志是排查问题的重要依据
 
-### 项目接口
+项目中的日志文件主要用于开发与问题定位。开发时遇到前后端问题，应优先查看日志而不是盲猜。
 
-| 方法 | 路径 | 说明 |
-|:-----|:-----|:-----|
-| GET | /projects | 获取项目列表 |
-| GET | /projects/{id} | 获取项目详情 |
-| POST | /projects | 创建项目 |
-| PUT | /projects/{id} | 更新项目 |
-| DELETE | /projects/{id} | 删除项目 |
-| GET | /projects/{id}/gantt | 获取甘特图数据 |
+建议习惯：
 
-### 任务接口
+- 后端在关键流程中记录日志
+- 前端在关键 API 调用、状态变更、异常处理中记录日志
+- 测试发现问题后，先通过日志定位，再修改代码
 
-| 方法 | 路径 | 说明 |
-|:-----|:-----|:-----|
-| GET | /tasks | 获取任务列表 |
-| GET | /tasks/{id} | 获取任务详情 |
-| POST | /tasks | 创建任务 |
-| PUT | /tasks/{id} | 更新任务 |
-| DELETE | /tasks/{id} | 删除任务 |
-| GET | /tasks/{id}/timelines | 获取任务时间线 |
+### 3. 代码与文档以当前实现为准
 
-### 评审接口
+仓库中可能保留部分历史文档或过时说明。当前项目规范以实际代码结构、后端启动逻辑和 `ai/` 目录中的协作文档为准。
 
-| 方法 | 路径 | 说明 |
-|:-----|:-----|:-----|
-| GET | /reviews | 获取评审列表 |
-| POST | /reviews | 创建评审 |
-| PUT | /reviews/{id} | 更新评审 |
+## API 概览
 
-### 分类接口
+- `GET /api/projects`
+- `GET /api/tasks`
+- `GET /api/computers`
+- `GET /api/resource-paths`
+- `GET /api/comics`
+- `POST /api/ai/chat`
+- `POST /api/ai/analyze`
 
-| 方法 | 路径 | 说明 |
-|:-----|:-----|:-----|
-| GET | /categories | 获取分类列表 |
-| POST | /categories | 创建分类 |
-| PUT | /categories/{id} | 更新分类 |
-| DELETE | /categories/{id} | 删除分类 |
+## 说明
 
-### 用户接口
-
-| 方法 | 路径 | 说明 |
-|:-----|:-----|:-----|
-| GET | /users/current | 获取当前用户 |
-| GET | /users/current/settings | 获取用户设置 |
-| PUT | /users/current/settings | 更新用户设置 |
-
-### 资源管理接口
-
-| 方法 | 路径 | 说明 |
-|:-----|:-----|:-----|
-| GET | /computers | 获取电脑列表 |
-| POST | /computers/register | 注册电脑 |
-| PUT | /computers/{id}/heartbeat | 心跳检测 |
-| GET | /resource-paths | 获取资源路径列表 |
-| POST | /resource-paths | 创建资源路径 |
-| GET | /comics | 获取漫画列表 |
-| GET | /comics/{id} | 获取漫画详情 |
-| PUT | /comics/{id} | 更新漫画信息 |
-| GET | /comics/{id}/chapters | 获取章节列表 |
-| GET | /comics/{id}/chapter/{chapterId}/images | 获取章节图片 |
-
-### AI 接口
-
-| 方法 | 路径 | 说明 |
-|:-----|:-----|:-----|
-| POST | /ai/analyze | AI 数据分析 |
-| POST | /ai/chat | AI 对话 |
-
----
-
-## 🗄️ 数据库设计
-
-### ER 图
-
-```
-┌─────────────┐       ┌─────────────┐       ┌─────────────┐
-│   Projects  │──────▶│    Tasks    │◀──────│TaskTimelines│
-└─────────────┘  1:N  └─────────────┘  1:N  └─────────────┘
-      │                │
-      │ 1:N            │ 1:N
-      ▼                ▼
-┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│   Reviews   │  │ TaskDelays  │  │TaskExtraReq │
-└─────────────┘  └─────────────┘  └─────────────┘
-      │
-      │ 1:N
-      ▼
-┌─────────────┐
-│  Timelines  │
-└─────────────┘
-
-┌─────────────┐       ┌─────────────┐       ┌─────────────┐
-│  Computers  │──────▶│ResourcePaths│──────▶│   Comics    │───▶ ComicChapters
-└─────────────┘  1:N  └─────────────┘  1:N  └─────────────┘
-
-┌─────────────┐
-│    Users    │
-└─────────────┘
-      │
-      │ 1:1
-      ▼
-┌─────────────┐
-│UserSettings │
-└─────────────┘
-```
-
-### 表结构
-
-| 表名 | 说明 | 主键 |
-|:-----|:-----|:-----|
-| Projects | 项目信息 | Id |
-| Tasks | 任务信息 | Id |
-| TaskCategories | 任务分类 | Id |
-| Timelines | 项目时间线 | Id |
-| TaskTimelines | 任务时间线 | Id |
-| TaskDelays | 延期记录 | Id |
-| TaskExtraRequirements | 额外需求 | Id |
-| Reviews | 评审记录 | Id |
-| Computers | 电脑设备 | Id |
-| ResourcePaths | 资源路径 | Id |
-| Comics | 漫画信息 | Id |
-| ComicChapters | 漫画章节 | Id |
-| Users | 用户信息 | Id |
-| UserSettings | 用户设置 | Id |
-
-> 💡 **注意**: 部署时会自动同步数据库结构，无需手动创建表。
-
----
-
-## 🔧 常用命令
-
-```bash
-# ============ Docker 命令 ============
-
-# 查看容器状态
-docker-compose ps
-
-# 查看日志
-docker-compose logs -f api
-docker-compose logs -f frontend
-docker-compose logs -f mysql
-
-# 重启服务
-docker-compose restart api
-docker-compose restart frontend
-
-# 完全重建
-docker-compose down && docker-compose up -d --build
-
-# 进入数据库
-docker-compose exec mysql mysql -u root -p projecthub
-
-# 备份数据库
-docker-compose exec mysql mysqldump -u root -p projecthub > backup.sql
-
-# 恢复数据库
-docker-compose exec -i mysql mysql -u root -p projecthub < backup.sql
-
-
-# ============ Git 命令 ============
-
-# 提交代码
-git add .
-git commit -m "提交信息"
-git push
-
-# 查看版本
-cat VERSION
-
-
-# ============ 本地开发命令 ============
-
-# 前端
-cd projecthub && npm run dev
-
-# 后端
-cd api && dotnet run
-
-# 本地代理
-cd proxy && python main.py
-```
-
----
-
-## 🐛 故障排查
-
-| 问题现象 | 排查方法 |
-|:---------|:---------|
-| 前端 502 错误 | `docker-compose logs frontend` 检查 Nginx 配置 |
-| 前端 500 错误 | `docker-compose logs api` 查看 API 错误日志 |
-| 数据库连接失败 | 检查 `.env` 密码配置，执行 `docker-compose logs mysql` |
-| 端口冲突 | 修改 `docker-compose.yml` 中的端口映射 |
-| CI/CD SSH 失败 | 检查 Secrets 配置，确认服务器防火墙放行 22 端口 |
-| 迁移失败 | 检查 `api/Program.cs` 数据库同步逻辑 |
-
-### 日志查看
-
-```bash
-# 查看 API 详细日志
-docker-compose logs -f --tail=100 api
-
-# 查看错误日志
-docker-compose logs api | grep -i error
-
-# 查看数据库连接日志
-docker-compose logs mysql | grep -i connection
-```
-
----
-
-## 🔄 CI/CD 部署
-
-项目已配置完整的 GitHub Actions 自动化部署流程。
-
-### 配置 Secrets
-
-在 GitHub 仓库 `Settings → Secrets and variables → Actions` 中添加：
-
-| Secret | 说明 |
-|:--------|:-----|
-| SERVER_HOST | 服务器公网 IP |
-| SERVER_USER | SSH 用户名 |
-| SERVER_SSH_KEY | SSH 私钥 |
-
-### 部署流程
-
-1. 推送代码到 `main` 分支
-2. GitHub Actions 自动执行：
-   - ✅ 代码编译检查
-   - ✅ 构建 Docker 镜像
-   - ✅ 递增版本号
-   - ✅ SSH 部署到服务器
-
-### 版本管理
-
-采用语义化版本（SemVer）：`MAJOR.MINOR.PATCH`
-
-- 每次提交自动递增 PATCH 版本
-- 版本信息展示在页面页脚
-
----
-
-## 📝 更新日志
-
-版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
-
-当前版本：查看 `VERSION` 文件
-
-详细更新记录：[GitHub Releases](https://github.com/Dream-Black/ai-claw/releases)
-
----
-
-## 🤝 贡献指南
-
-1. Fork 本仓库
-2. 创建特性分支：`git checkout -b feature/AmazingFeature`
-3. 提交更改：`git commit -m 'Add some AmazingFeature'`
-4. 推送分支：`git push origin feature/AmazingFeature`
-5. 创建 Pull Request
-
----
-
-## 📄 许可证
-
-[MIT](LICENSE) © Dream-Black
-
----
-
-<p align="center">
-  Made with ❤️ by ProjectHub Team
-</p>
+本仓库包含前端、后端和代理服务，适合做个人工作流、项目追踪与本地资源管理的一体化工具。

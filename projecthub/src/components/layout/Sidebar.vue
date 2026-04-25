@@ -81,10 +81,8 @@ import {
   DashboardIcon,
   FolderOpenIcon,
   TaskIcon,
-  TimeIcon,
   ChartRingIcon,
   RootListIcon,
-  CheckCircleIcon,
   RobotIcon,
 } from 'tdesign-icons-vue-next'
 import { useLayoutState } from '@/composables/useLayoutState'
@@ -102,7 +100,6 @@ const navGroups = [
       { path: '/', title: '仪表盘', icon: DashboardIcon },
       { path: '/projects', title: '项目管理', icon: FolderOpenIcon },
       { path: '/tasks', title: '任务中心', icon: TaskIcon },
-      { path: '/timeline', title: '时间线', icon: TimeIcon },
       { path: '/gantt', title: '甘特图', icon: ChartRingIcon },
     ],
   },
@@ -110,7 +107,6 @@ const navGroups = [
     title: '内容管理',
     items: [
       { path: '/resources', title: '资源管理', icon: RootListIcon },
-      { path: '/review', title: '复盘总结', icon: CheckCircleIcon },
     ],
   },
   {

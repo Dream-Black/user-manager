@@ -118,40 +118,6 @@ export const taskService = {
   }
 }
 
-// ============ 时间线相关 ============
-export const timelineService = {
-  getAll: async (params = {}) => {
-    return api.get('/timelines', { params })
-  },
-
-  getByProject: async (projectId) => {
-    return api.get(`/timelines/project/${projectId}`)
-  }
-}
-
-// ============ 复盘相关 ============
-export const reviewService = {
-  getAll: async (params = {}) => {
-    return api.get('/reviews', { params })
-  },
-
-  getById: async (id) => {
-    return api.get(`/reviews/${id}`)
-  },
-
-  create: async (data) => {
-    return api.post('/reviews', data)
-  },
-
-  update: async (id, data) => {
-    return api.put(`/reviews/${id}`, data)
-  },
-
-  delete: async (id) => {
-    return api.delete(`/reviews/${id}`)
-  }
-}
-
 // ============ 用户相关 ============
 export const userService = {
   // 获取当前用户信息
@@ -196,12 +162,78 @@ export const userSettingsService = {
 
 // ============ AI 相关 ============
 export const aiService = {
-  chat: async (data) => {
-    return api.post('/ai/chat', data)
+  // 获取所有对话列表
+  getConversations: async (params = {}) => {
+    return api.get('/ai/conversations', { params })
   },
 
-  getReminder: async () => {
-    return api.get('/ai/reminder')
+  archiveConversation: async (id, isArchived) => {
+    return api.patch(`/ai/conversations/${id}/archive`, { isArchived })
+  },
+
+  pinConversation: async (id, isPinned) => {
+    return api.patch(`/ai/conversations/${id}/pin`, { isPinned })
+  },
+
+  // 新建对话
+  createConversation: async (title) => {
+    return api.post('/ai/conversations', { title })
+  },
+
+  // 获取对话消息
+  getConversationMessages: async (id) => {
+    return api.get(`/ai/conversations/${id}`)
+  },
+
+  updateMessage: async (conversationId, messageId, data) => {
+    return api.put(`/ai/conversations/${conversationId}/messages/${messageId}`, data)
+  },
+
+  regenerateMessage: async (conversationId, messageId) => {
+    return api.post(`/ai/conversations/${conversationId}/messages/${messageId}/regenerate`)
+  },
+
+  confirmDraft: async (conversationId, messageId) => {
+    return api.post(`/ai/conversations/${conversationId}/messages/${messageId}/confirm-draft`)
+  },
+
+  // 删除对话
+  deleteConversation: async (id) => {
+    return api.delete(`/ai/conversations/${id}`)
+  },
+
+  // 获取AI设置
+  getSettings: async () => {
+    return api.get('/ai/settings')
+  },
+
+  // 更新AI设置
+  updateSettings: async (data) => {
+    return api.put('/ai/settings', data)
+  },
+
+  // 上传附件
+  uploadAttachment: async (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/ai/upload', formData, {
+      timeout: 30000
+    })
+  },
+
+  // 流式聊天（返回 fetch Response 用于读取 SSE）
+  chatStream: async (conversationId, message, deepThink, attachments) => {
+    const response = await fetch(`/api/ai/conversations/${conversationId}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        deepThink,
+        attachments: attachments ? JSON.stringify(attachments) : null
+      })
+    })
+
+    return response
   }
 }
 

@@ -11,6 +11,15 @@
   transition: all var(--transition-fast) !important;
 }
 
+.t-input,
+.t-select,
+.t-textarea,
+.t-button,
+.t-card,
+.t-dialog {
+  backdrop-filter: blur(12px);
+}
+
 .t-button--variant-primary {
   background: var(--gradient-primary) !important;
   border-color: var(--primary-color) !important;

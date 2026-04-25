@@ -38,6 +38,5 @@ public class Project
 
     // 导航属性
     public virtual ICollection<ProjectTask> Tasks { get; set; } = new List<ProjectTask>();
-    public virtual ICollection<Review> Reviews { get; set; } = new List<Review>();
     public virtual ICollection<Timeline> Timelines { get; set; } = new List<Timeline>();
 }

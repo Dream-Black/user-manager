@@ -4,12 +4,14 @@ import ProjectList from '../views/projects/ProjectList.vue'
 import ProjectDetail from '../views/projects/ProjectDetail.vue'
 import TaskList from '../views/tasks/TaskList.vue'
 import GanttView from '../views/gantt/GanttView.vue'
-import TimelineView from '../views/timeline/TimelineView.vue'
-import ReviewList from '../views/review/ReviewList.vue'
 import AiView from '../views/ai/AiView.vue'
 import SettingsView from '../views/settings/SettingsView.vue'
 
 const routes = [
+  { path: '/review', redirect: '/' },
+  { path: '/review/:pathMatch(.*)*', redirect: '/' },
+  { path: '/timeline', redirect: '/' },
+  { path: '/timeline/:pathMatch(.*)*', redirect: '/' },
   {
     path: '/',
     name: 'Dashboard',
@@ -39,18 +41,6 @@ const routes = [
     name: 'Gantt',
     component: GanttView,
     meta: { title: '甘特图' }
-  },
-  {
-    path: '/timeline',
-    name: 'Timeline',
-    component: TimelineView,
-    meta: { title: '时间线' }
-  },
-  {
-    path: '/review',
-    name: 'Review',
-    component: ReviewList,
-    meta: { title: '复盘总结' }
   },
   {
     path: '/ai',

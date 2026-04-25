@@ -165,6 +165,40 @@
             </t-radio-group>
           </div>
         </div>
+
+        <!-- AI 设置 -->
+        <div v-if="activeSection === 'ai'" class="settings-section">
+          <h2 class="section-title">AI 助手设置</h2>
+          <p class="section-desc">配置 DeepSeek API，启用 AI 助手功能（数据将加密存储）</p>
+
+          <t-form :data="aiForm" label-align="top" class="ai-settings-form">
+            <t-form-item label="DeepSeek API Key">
+              <t-input
+                v-model="aiForm.deepSeekApiKey"
+                type="password"
+                placeholder="sk-..."
+                clearable
+                :maxlength="200"
+              />
+              <template #help>
+                <span class="form-help">在 <a href="https://platform.deepseek.com" target="_blank">DeepSeek 开放平台</a> 获取 API Key</span>
+              </template>
+            </t-form-item>
+
+            <t-form-item label="默认模型">
+              <t-radio-group v-model="aiForm.deepSeekModel">
+                <t-radio-button value="deepseek-chat">deepseek-chat（快速响应）</t-radio-button>
+                <t-radio-button value="deepseek-reasoner">deepseek-reasoner（深度思考）</t-radio-button>
+              </t-radio-group>
+            </t-form-item>
+          </t-form>
+
+          <div class="section-actions">
+            <t-button theme="primary" :loading="aiSaving" @click="handleAiSettingsSave">
+              保存设置
+            </t-button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -178,18 +212,20 @@ import { ref, computed, onMounted } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { markRaw } from 'vue'
 import AvatarCropper from '@/components/settings/AvatarCropper.vue'
-import { userService, userSettingsService } from '@/services/dataService'
+import { userService, userSettingsService, aiService } from '@/services/dataService'
 
 const activeSection = ref('profile')
 const profileFormRef = ref(null)
 const showAvatarCropper = ref(false)
 const saving = ref(false)
+const aiSaving = ref(false)
 
 const settingsSections = [
   { key: 'profile', label: '个人信息', icon: markRaw(UserIcon) },
   { key: 'security', label: '账号安全', icon: markRaw(LockOnIcon) },
   { key: 'notifications', label: '通知设置', icon: markRaw(NotificationIcon) },
-  { key: 'appearance', label: '外观设置', icon: markRaw(PaletteIcon) }
+  { key: 'appearance', label: '外观设置', icon: markRaw(PaletteIcon) },
+  { key: 'ai', label: 'AI 设置', icon: markRaw(RobotIcon) }
 ]
 
 const themes = [
@@ -242,6 +278,11 @@ const notificationForm = ref({
 const appearanceForm = ref({
   theme: 'light',
   density: 'normal'
+})
+
+const aiForm = ref({
+  deepSeekApiKey: '',
+  deepSeekModel: 'deepseek-chat'
 })
 
 // 监听系统主题变化
@@ -363,7 +404,7 @@ const handleAppearanceChange = async () => {
 
 // 图标
 import { markRaw as vueMarkRaw } from 'vue'
-import { UserIcon, LockOnIcon, NotificationIcon, PaletteIcon, CheckIcon, UploadIcon } from 'tdesign-icons-vue-next'
+import { UserIcon, LockOnIcon, NotificationIcon, PaletteIcon, CheckIcon, UploadIcon, RobotIcon } from 'tdesign-icons-vue-next'
 
 // 初始化主题
 const initTheme = () => {
@@ -378,6 +419,7 @@ onMounted(async () => {
   await loadUserProfile()
   initTheme()
   await loadUserSettings()
+  await loadAiSettings()
 })
 
 // 应用主题
@@ -404,6 +446,34 @@ const loadUserSettings = async () => {
     }
   } catch (error) {
     console.error('加载用户设置失败:', error)
+  }
+}
+
+// 加载 AI 设置
+const loadAiSettings = async () => {
+  try {
+    const settings = await aiService.getSettings()
+    aiForm.value.deepSeekApiKey = settings.deepSeekApiKey || ''
+    aiForm.value.deepSeekModel = settings.deepSeekModel || 'deepseek-chat'
+  } catch (error) {
+    console.error('加载 AI 设置失败:', error)
+  }
+}
+
+// 保存 AI 设置
+const handleAiSettingsSave = async () => {
+  aiSaving.value = true
+  try {
+    await aiService.updateSettings({
+      deepSeekApiKey: aiForm.value.deepSeekApiKey,
+      deepSeekModel: aiForm.value.deepSeekModel
+    })
+    MessagePlugin.success('AI 设置已保存')
+  } catch (error) {
+    console.error('保存 AI 设置失败:', error)
+    MessagePlugin.error('保存失败，请重试')
+  } finally {
+    aiSaving.value = false
   }
 }
 </script>
@@ -456,4 +526,9 @@ const loadUserSettings = async () => {
 .theme-option span { font-size: 12px; color: var(--text-secondary); }
 
 .density-setting h4 { font-size: 14px; font-weight: 500; color: var(--text-primary); margin: 0 0 16px 0; }
+
+.section-desc { font-size: 13px; color: var(--text-secondary); margin: 0 0 20px 0; }
+.form-help { font-size: 12px; color: var(--text-tertiary); }
+.form-help a { color: var(--primary-color); }
+.ai-settings-form { max-width: 500px; }
 </style>

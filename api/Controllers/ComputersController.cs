@@ -103,7 +103,7 @@ public class ComputersController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateOrUpdateComputer([FromBody] CreateComputerRequest request)
     {
-        var hostName = Request.Headers["X-Computer-Hostname"].FirstOrDefault() ?? request.HostName;
+        var hostName = Request.Headers["X-Computer-Hostname"].FirstOrDefault() ?? request.HostName ?? "";
 
         var computer = await _context.Computers.FirstOrDefaultAsync(c => c.HostName == hostName);
 

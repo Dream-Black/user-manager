@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
+var isDevelopment = builder.Environment.IsDevelopment();
 
 // 配置 MySQL 数据库
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -15,6 +16,10 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // 注册 HttpClient 和 AI 服务
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AiService>();
+if (isDevelopment)
+{
+    builder.Services.AddScoped<IFileLogService, FileLogService>();
+}
 
 // 配置控制器 + JSON选项
 builder.Services.AddControllers()
@@ -65,6 +70,8 @@ app.Use(async (context, next) =>
 });
 
 // 自动同步数据库结构
+if (isDevelopment)
+{
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -244,26 +251,7 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ ResourcePaths 表已创建");
         }
         
-        // 8. 创建 Reviews 表（如果不存在）
-        if (!TableExists("Reviews"))
-        {
-            command.CommandText = @"
-                CREATE TABLE Reviews (
-                    Id INT AUTO_INCREMENT PRIMARY KEY,
-                    ProjectId INT NOT NULL,
-                    TaskId INT NULL,
-                    Title VARCHAR(200) NULL,
-                    GoodPoints VARCHAR(2000) NULL,
-                    Improvements VARCHAR(2000) NULL,
-                    NextActions VARCHAR(2000) NULL,
-                    CreatedAt DATETIME(6) NOT NULL,
-                    FOREIGN KEY (ProjectId) REFERENCES Projects(Id) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-            command.ExecuteNonQuery();
-            logger.LogInformation("✓ Reviews 表已创建");
-        }
-        
-        // 9. 创建 Tasks 表（如果不存在）
+        // 8. 创建 Tasks 表（如果不存在）
         if (!TableExists("Tasks"))
         {
             command.CommandText = @"
@@ -290,7 +278,7 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ Tasks 表已创建");
         }
         
-        // 10. 创建 Timelines 表（如果不存在）
+        // 9. 创建 Timelines 表（如果不存在）
         if (!TableExists("Timelines"))
         {
             command.CommandText = @"
@@ -309,7 +297,7 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ Timelines 表已创建");
         }
         
-        // 11. 创建 Comics 表（如果不存在）
+        // 10. 创建 Comics 表（如果不存在）
         if (!TableExists("Comics"))
         {
             command.CommandText = @"
@@ -328,7 +316,7 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ Comics 表已创建");
         }
         
-        // 12. 创建 TaskDelays 表（如果不存在）
+        // 11. 创建 TaskDelays 表（如果不存在）
         if (!TableExists("TaskDelays"))
         {
             command.CommandText = @"
@@ -345,7 +333,7 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ TaskDelays 表已创建");
         }
         
-        // 13. 创建 TaskExtraRequirements 表（如果不存在）
+        // 12. 创建 TaskExtraRequirements 表（如果不存在）
         if (!TableExists("TaskExtraRequirements"))
         {
             command.CommandText = @"
@@ -360,7 +348,7 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ TaskExtraRequirements 表已创建");
         }
         
-        // 14. 创建 TaskTimelines 表（如果不存在）
+        // 13. 创建 TaskTimelines 表（如果不存在）
         if (!TableExists("TaskTimelines"))
         {
             command.CommandText = @"
@@ -379,7 +367,7 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ TaskTimelines 表已创建");
         }
         
-        // 15. 创建 ComicChapters 表（如果不存在）
+        // 14. 创建 ComicChapters 表（如果不存在）
         if (!TableExists("ComicChapters"))
         {
             command.CommandText = @"
@@ -396,7 +384,7 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ ComicChapters 表已创建");
         }
         
-        // 16. 创建 SubTasks 表（如果不存在）
+        // 15. 创建 SubTasks 表（如果不存在）
         if (!TableExists("SubTasks"))
         {
             command.CommandText = @"
@@ -415,7 +403,74 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ SubTasks 表已创建");
         }
         
-        // 17. 检查并添加 Users 表的新列（兼容旧代码）
+        // 16. 创建 Conversations 表（如果不存在）
+        if (!TableExists("Conversations"))
+        {
+            command.CommandText = @"
+                CREATE TABLE Conversations (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Title VARCHAR(200) NOT NULL DEFAULT '新对话',
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL,
+                    IsArchived TINYINT(1) NOT NULL DEFAULT 0,
+                    IsPinned TINYINT(1) NOT NULL DEFAULT 0,
+                    MemorySummary LONGTEXT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Conversations 表已创建");
+        }
+        else
+        {
+            if (!ColumnExists("Conversations", "IsArchived"))
+            {
+                command.CommandText = "ALTER TABLE Conversations ADD COLUMN IsArchived TINYINT(1) NOT NULL DEFAULT 0";
+                command.ExecuteNonQuery();
+                logger.LogInformation("✓ Conversations.IsArchived 列已添加");
+            }
+            if (!ColumnExists("Conversations", "IsPinned"))
+            {
+                command.CommandText = "ALTER TABLE Conversations ADD COLUMN IsPinned TINYINT(1) NOT NULL DEFAULT 0";
+                command.ExecuteNonQuery();
+                logger.LogInformation("✓ Conversations.IsPinned 列已添加");
+            }
+            if (!ColumnExists("Conversations", "MemorySummary"))
+            {
+                command.CommandText = "ALTER TABLE Conversations ADD COLUMN MemorySummary LONGTEXT NULL";
+                command.ExecuteNonQuery();
+                logger.LogInformation("✓ Conversations.MemorySummary 列已添加");
+            }
+        }
+        
+        // 17. 创建 ChatMessages 表（如果不存在）
+        if (!TableExists("ChatMessages"))
+        {
+            command.CommandText = @"
+                CREATE TABLE ChatMessages (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    ConversationId INT NOT NULL,
+                    Role VARCHAR(20) NOT NULL DEFAULT 'user',
+                    Content LONGTEXT NULL,
+                    ReasoningContent LONGTEXT NULL,
+                    ToolCalls LONGTEXT NULL,
+                    Attachments LONGTEXT NULL,
+                    FilesJson LONGTEXT NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (ConversationId) REFERENCES Conversations(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ ChatMessages 表已创建");
+        }
+        else
+        {
+            if (!ColumnExists("ChatMessages", "FilesJson"))
+            {
+                command.CommandText = "ALTER TABLE ChatMessages ADD COLUMN FilesJson LONGTEXT NULL AFTER Attachments";
+                command.ExecuteNonQuery();
+                logger.LogInformation("✓ ChatMessages.FilesJson 列已添加");
+            }
+        }
+        
+        // 18. 检查并添加 Users 表的新列（兼容旧代码）
         if (!ColumnExists("Users", "Theme"))
         {
             command.CommandText = "ALTER TABLE Users ADD COLUMN Theme VARCHAR(20) NULL DEFAULT 'light'";
@@ -430,14 +485,14 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ Users.Density 列已添加");
         }
         
-        // 18. 记录已应用的迁移
+        // 19. 记录已应用的迁移
         command.CommandText = @"
             INSERT IGNORE INTO __EFMigrationsHistory (MigrationId, ProductVersion)
             VALUES ('20260415165055_AddUserThemeAndDensity', '8.0.0')";
         command.ExecuteNonQuery();
         
         connection.Close();
-        logger.LogInformation("✓ 数据库结构同步完成 - 共 16 个表已检查/创建");
+        logger.LogInformation("✓ 数据库结构同步完成 - 共 17 个表已检查/创建");
     }
     catch (Exception ex)
     {
@@ -449,7 +504,10 @@ app.UseSwagger(options =>
 {
     options.PreSerializeFilters.Add((document, request) =>
     {
-        Console.WriteLine($"[Swagger] Generating OpenAPI document for: {request.Path}");
+        if (isDevelopment)
+        {
+            Console.WriteLine($"[Swagger] Generating OpenAPI document for: {request.Path}");
+        }
     });
 });
 app.UseSwaggerUI(c =>

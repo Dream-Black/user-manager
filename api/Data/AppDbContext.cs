@@ -15,7 +15,6 @@ public class AppDbContext : DbContext
     public DbSet<TaskTimeline> TaskTimelines => Set<TaskTimeline>();
     public DbSet<TaskDelay> TaskDelays => Set<TaskDelay>();
     public DbSet<TaskExtraRequirement> TaskExtraRequirements => Set<TaskExtraRequirement>();
-    public DbSet<Review> Reviews => Set<Review>();
     public DbSet<TaskCategory> TaskCategories => Set<TaskCategory>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
     
@@ -30,6 +29,10 @@ public class AppDbContext : DbContext
 
     // 子任务模块
     public DbSet<SubTask> SubTasks => Set<SubTask>();
+
+    // AI 助手模块
+    public DbSet<Conversation> Conversations => Set<Conversation>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -101,18 +104,6 @@ public class AppDbContext : DbContext
             entity.HasOne(e => e.Task)
                   .WithMany(t => t.ExtraRequirements)
                   .HasForeignKey(e => e.TaskId)
-                  .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        // Review 配置
-        modelBuilder.Entity<Review>(entity =>
-        {
-            entity.HasIndex(e => e.ProjectId);
-            entity.HasIndex(e => e.CreatedAt);
-
-            entity.HasOne(r => r.Project)
-                  .WithMany(p => p.Reviews)
-                  .HasForeignKey(r => r.ProjectId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -205,6 +196,29 @@ public class AppDbContext : DbContext
             entity.HasOne(s => s.ParentTask)
                   .WithMany(t => t.SubTasks)
                   .HasForeignKey(s => s.ParentTaskId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ===== AI 助手模块配置 =====
+
+        // Conversation 配置
+        modelBuilder.Entity<Conversation>(entity =>
+        {
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.UpdatedAt);
+            entity.HasIndex(e => e.IsArchived);
+            entity.HasIndex(e => e.IsPinned);
+        });
+
+        // ChatMessage 配置
+        modelBuilder.Entity<ChatMessage>(entity =>
+        {
+            entity.HasIndex(e => e.ConversationId);
+            entity.HasIndex(e => e.CreatedAt);
+
+            entity.HasOne(m => m.Conversation)
+                  .WithMany(c => c.Messages)
+                  .HasForeignKey(m => m.ConversationId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }
