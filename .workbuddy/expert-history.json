@@ -169,7 +169,29 @@
         "usedAt": 1776271209006,
         "industryId": "all"
       }
+    ],
+    "23f78d4f4b3241db957d1cb6f2c28ad2": [
+      {
+        "expertId": "SoftwareArchitect",
+        "name": "架构通",
+        "profession": "软件架构师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/SoftwareArchitect/SoftwareArchitect.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/SoftwareArchitect/SoftwareArchitect_zh.md",
+        "usedAt": 1777123041879,
+        "industryId": "02-Engineering"
+      }
+    ],
+    "ff5e36897beb4c32aa44cebc4341de57": [
+      {
+        "expertId": "FrontendDeveloper",
+        "name": "像素匠",
+        "profession": "前端开发工程师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/FrontendDeveloper/FrontendDeveloper.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/FrontendDeveloper/FrontendDeveloper_zh.md",
+        "usedAt": 1777124665345,
+        "industryId": "02-Engineering"
+      }
     ]
   },
-  "lastUpdated": 1776273503187
+  "lastUpdated": 1777126468348
 }

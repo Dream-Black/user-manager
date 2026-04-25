@@ -1,7 +1,11 @@
 /**
  * 资源管理模块 API
- * 后端API: http://localhost:5000
+ * 后端API: /api (通过 Nginx 反向代理)
  * 本地代理: http://localhost:6789
+ *
+ * 桌面端适配：
+ * - 在 Electron 环境中使用 window.localBridge.fetch() 绕过 CORS
+ * - 在 Web 环境中保持原有的 axios 直连方式
  */
 import axios from 'axios';
 
@@ -28,7 +32,154 @@ function getComputerHostName(): string {
   return localStorage.getItem('computer-hostname') || window.location.hostname;
 }
 
-// ==================== 电脑相关 API ====================
+// ============================================================
+// 桌面端兼容层：本地代理请求
+// ============================================================
+
+// 检测是否在 Electron 桌面端环境中
+function isDesktop(): boolean {
+  return typeof window !== 'undefined' && typeof (window as any).localBridge !== 'undefined';
+}
+
+// 本地代理基础路径
+const PROXY_BASE_URL = 'http://localhost:6789';
+
+/**
+ * 封装本地代理请求（兼容桌面端和 Web 端）
+ * - 桌面端：通过 Electron IPC 转发，绕过 CORS
+ * - Web 端：直接请求（仅开发环境可用）
+ */
+async function proxyRequest<T = any>(
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  path: string,
+  options?: { params?: Record<string, any>; data?: any }
+): Promise<T> {
+  // 构造完整 URL
+  let url = path;
+  if (options?.params) {
+    const searchParams = new URLSearchParams();
+    Object.entries(options.params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        searchParams.append(key, String(value));
+      }
+    });
+    const queryString = searchParams.toString();
+    if (queryString) {
+      url += (url.includes('?') ? '&' : '?') + queryString;
+    }
+  }
+
+  // 桌面端：使用 Electron IPC 转发
+  if (isDesktop()) {
+    console.log(`[Desktop Proxy] ${method} ${url}`);
+    const result = await (window as any).localBridge.fetch(url, {
+      method,
+      body: options?.data
+    });
+
+    if (result.status >= 200 && result.status < 300) {
+      return result.data;
+    } else {
+      const error = new Error(result.data?.error || result.data?.message || `请求失败 (${result.status})`);
+      (error as any).response = { status: result.status, data: result.data };
+      throw error;
+    }
+  }
+
+  // Web 端：使用 axios 直连
+  const fullUrl = `${PROXY_BASE_URL}${url}`;
+  console.log(`[Web Proxy] ${method} ${fullUrl}`);
+
+  const response = await axios({
+    method,
+    url: fullUrl,
+    data: options?.data,
+    timeout: 30000,
+  });
+
+  return response.data;
+}
+
+/**
+ * 获取本地代理健康状态
+ */
+export async function getProxyHealth() {
+  return proxyRequest<{ status: string; service: string; version: string }>('GET', '/health');
+}
+
+/**
+ * 获取系统信息
+ */
+export async function getSystemInfo() {
+  return proxyRequest<any>('GET', '/system/info');
+}
+
+/**
+ * 获取文件列表
+ */
+export async function getFileList(path: string) {
+  return proxyRequest<any>('GET', '/files/list', { params: { path } });
+}
+
+/**
+ * 读取文件（图片预览）
+ * 返回文件 URL
+ * - 桌面端：返回通过 localBridge 获取的 base64 数据 URL
+ * - Web 端：返回直接访问的 URL（仅开发环境可用）
+ */
+export async function getFileContent(path: string): Promise<string> {
+  if (isDesktop()) {
+    // 桌面端：通过 IPC 获取文件内容
+    const result = await (window as any).localBridge.get(`/files/read?path=${encodeURIComponent(path)}`);
+
+    if (result.status === 200 && result.data) {
+      // 如果是 base64 图片，构造 data URL
+      const contentType = result.data.contentType || 'image/jpeg';
+      const base64 = result.data.content || result.data;
+      if (typeof base64 === 'string' && base64.length > 100) {
+        // 假设是 base64 编码
+        return `data:${contentType};base64,${base64}`;
+      }
+      return base64;
+    }
+    throw new Error(result.data?.error || '获取文件失败');
+  }
+
+  // Web 端：返回直接访问的 URL
+  return `${PROXY_BASE_URL}/files/read?path=${encodeURIComponent(path)}`;
+}
+
+/**
+ * 扫描漫画文件夹
+ */
+export async function scanComicFolder(path: string) {
+  return proxyRequest<any>('GET', '/comics/scan', { params: { path } });
+}
+
+/**
+ * 添加允许路径
+ */
+export async function addAllowedPath(path: string) {
+  return proxyRequest<any>('POST', '/config/paths', { data: { path } });
+}
+
+/**
+ * 获取允许路径列表
+ */
+export async function getAllowedPaths() {
+  return proxyRequest<any[]>('GET', '/config/paths');
+}
+
+/**
+ * 测试路径是否存在
+ */
+export async function testPath(path: string) {
+  return proxyRequest<any>('POST', '/resource-paths/test', { data: { path } });
+}
+
+// ============================================================
+// 电脑相关 API
+// ============================================================
 
 /**
  * 获取当前电脑（自动识别）
@@ -51,7 +202,9 @@ export function sendHeartbeat(id: number) {
   return apiClient.post(`/computers/${id}/heartbeat`);
 }
 
-// ==================== 资源路径相关 API ====================
+// ============================================================
+// 资源路径相关 API
+// ============================================================
 
 /**
  * 获取资源路径列表
@@ -91,11 +244,13 @@ export function deleteResourcePath(id: number) {
 /**
  * 测试资源路径
  */
-export function testResourcePath(path: string) {
-  return proxyClient.post('/resource-paths/test', { path });
+export async function testResourcePath(path: string) {
+  return testPath(path);
 }
 
-// ==================== 漫画相关 API ====================
+// ============================================================
+// 漫画相关 API
+// ============================================================
 
 /**
  * 获取漫画列表
@@ -142,27 +297,24 @@ export function uploadThumbnail(id: number, base64: string) {
 }
 
 /**
- * 扫描漫画文件夹（调用6789代理）
+ * 扫描漫画文件夹（调用本地代理）
  * 返回原始扫描结果（含 chapters[]），供前端使用
  */
 export async function scanComics(resourcePathId: number) {
   // 1. 先获取资源路径信息
   const pathResponse = await apiClient.get(`/resource-paths/${resourcePathId}`);
   const resourcePath = pathResponse.data;
-  
+
   if (!resourcePath?.path) {
     throw new Error('资源路径不存在');
   }
-  
-  // 2. 调用6789代理获取本地扫描结果
+
+  // 2. 调用本地代理获取本地扫描结果
   const scanPath = resourcePath.path.replace(/\\/g, '/');
-  const response = await proxyClient.get('/comics/scan', { 
-    params: { path: scanPath } 
-  });
-  
-  const data = response.data;
+  const data = await scanComicFolder(scanPath);
+
   console.log('[scanComics] 本地扫描结果:', data);
-  
+
   // 返回原始数据，包含 chapters 供后续使用
   return {
     resourcePath,
@@ -183,7 +335,7 @@ export async function batchSaveComics(resourcePathId: number, comics: any[]) {
       type: 'manga'
     }))
   });
-  
+
   return response.data;
 }
 
@@ -194,7 +346,9 @@ export function getChapters(comicId: number) {
   return apiClient.get(`/comics/${comicId}/chapters`);
 }
 
-// ==================== 章节相关 API ====================
+// ============================================================
+// 章节相关 API
+// ============================================================
 
 /**
  * 获取章节详情
@@ -210,56 +364,9 @@ export function getChapterPages(chapterId: number) {
   return apiClient.get(`/chapters/${chapterId}/pages`);
 }
 
-// ==================== 本地代理 API ====================
-
-const proxyClient = axios.create({
-  baseURL: 'http://localhost:6789',
-  timeout: 30000,
-});
-
-/**
- * 获取代理服务健康状态
- */
-export function getProxyHealth() {
-  return proxyClient.get('/health');
-}
-
-/**
- * 获取系统信息
- */
-export function getSystemInfo() {
-  return proxyClient.get('/system/info');
-}
-
-/**
- * 获取文件列表
- */
-export function getFileList(path: string) {
-  return proxyClient.get('/files/list', { params: { path } });
-}
-
-/**
- * 读取文件（图片）
- */
-export function getFileContent(path: string) {
-  return `${proxyClient.defaults.baseURL}/files/read?path=${encodeURIComponent(path)}`;
-}
-
-/**
- * 扫描漫画文件夹
- */
-export function scanComicFolder(path: string) {
-  return proxyClient.get('/comics/scan', { params: { path } });
-}
-
-/**
- * 添加允许路径
- */
-export function addAllowedPath(path: string) {
-  return proxyClient.post('/config/paths', { path });
-}
-
-// ==================== 类型定义 ====================
+// ============================================================
+// 类型定义
+// ============================================================
 
 export interface Computer {
   id: number;
