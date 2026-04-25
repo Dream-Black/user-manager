@@ -9,6 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
+const { spawn } = require('child_process');
 
 // ============================================================
 // 1. 常量与配置
@@ -40,6 +41,14 @@ const SERVER_URL = envConfig.SERVER_URL || process.env.SERVER_URL || 'http://loc
 // Python Proxy 固定地址
 const PROXY_URL = 'http://localhost:6789';
 
+// Python Proxy 配置（从 .env 读取）
+const PYTHON_PATH = envConfig.PYTHON_PATH || 'python';
+const PYTHON_SCRIPT = envConfig.PYTHON_SCRIPT || path.join(__dirname, '..', 'proxy', 'main.py');
+
+// Python 进程管理
+let pythonProcess = null;
+let pythonRestartTimer = null;
+
 // GitHub Releases 下载页面
 const DOWNLOAD_PAGE = 'https://github.com/your-org/ai-claw/releases/latest';
 
@@ -49,6 +58,131 @@ const VERSION_CHECK_FILE = path.join(app.getPath('userData'), 'last-version-chec
 // ============================================================
 // 2. 工具函数
 // ============================================================
+
+/**
+ * 启动 Python Proxy 服务
+ */
+function startPythonProxy() {
+  // 如果已经在运行，不再重复启动
+  if (pythonProcess) {
+    log('Python', 'Python进程已在运行中');
+    return;
+  }
+
+  // 检查脚本文件是否存在
+  if (!fs.existsSync(PYTHON_SCRIPT)) {
+    log('Python', `Python脚本不存在: ${PYTHON_SCRIPT}`, 'ERROR');
+    return;
+  }
+
+  log('Python', `正在启动 Python Proxy...`);
+  log('Python', `脚本路径: ${PYTHON_SCRIPT}`);
+
+  // 启动Python进程（带热更新参数）
+  pythonProcess = spawn(PYTHON_PATH, [
+    '-m', 'uvicorn',
+    'main:app',
+    '--host', '0.0.0.0',
+    '--port', '6789',
+    '--reload',
+    '--reload-dir', path.dirname(PYTHON_SCRIPT)
+  ], {
+    cwd: path.dirname(PYTHON_SCRIPT),
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: false,
+    windowsHide: true
+  });
+
+  // 收集输出日志
+  const outputBuffer = [];
+
+  pythonProcess.stdout.on('data', (data) => {
+    const msg = data.toString().trim();
+    if (msg) {
+      outputBuffer.push(`[PYTHON] ${msg}`);
+      // 只保留最后50行
+      if (outputBuffer.length > 50) outputBuffer.shift();
+      log('Python', msg);
+    }
+  });
+
+  pythonProcess.stderr.on('data', (data) => {
+    const msg = data.toString().trim();
+    if (msg) {
+      outputBuffer.push(`[PYTHON ERROR] ${msg}`);
+      log('Python', msg, 'WARN');
+    }
+  });
+
+  pythonProcess.on('spawn', () => {
+    log('Python', '✅ Python Proxy 进程已启动（热更新模式）');
+  });
+
+  pythonProcess.on('error', (err) => {
+    log('Python', `启动失败: ${err.message}`, 'ERROR');
+    pythonProcess = null;
+
+    // 3秒后重试
+    if (!pythonRestartTimer) {
+      pythonRestartTimer = setTimeout(() => {
+        pythonRestartTimer = null;
+        startPythonProxy();
+      }, 3000);
+    }
+  });
+
+  pythonProcess.on('exit', (code, signal) => {
+    const msg = `Python Proxy 已退出 (code=${code}, signal=${signal})`;
+    if (code === 0) {
+      log('Python', msg, 'INFO');
+    } else {
+      log('Python', msg, 'WARN');
+
+      // 非正常退出时，5秒后自动重启（热更新场景）
+      if (!pythonRestartTimer) {
+        pythonRestartTimer = setTimeout(() => {
+          pythonRestartTimer = null;
+          pythonProcess = null; // 重置引用
+          log('Python', '正在重启 Python Proxy...');
+          startPythonProxy();
+        }, 5000);
+      }
+    }
+    pythonProcess = null;
+  });
+}
+
+/**
+ * 停止 Python Proxy
+ */
+function stopPythonProxy() {
+  if (pythonRestartTimer) {
+    clearTimeout(pythonRestartTimer);
+    pythonRestartTimer = null;
+  }
+
+  if (pythonProcess) {
+    log('Python', '正在停止 Python Proxy...');
+    pythonProcess.kill('SIGTERM');
+    // Windows需要用SIGKILL
+    setTimeout(() => {
+      if (pythonProcess) {
+        pythonProcess.kill('SIGKILL');
+        pythonProcess = null;
+      }
+    }, 2000);
+  }
+}
+
+/**
+ * 重启 Python Proxy（用于手动触发热更新）
+ */
+function restartPythonProxy() {
+  stopPythonProxy();
+  setTimeout(() => {
+    startPythonProxy();
+  }, 1000);
+}
 
 /**
  * 日志输出统一格式
@@ -126,7 +260,7 @@ function httpRequest(url, options = {}) {
 }
 
 /**
- * 检查 Python Proxy 是否在线
+ * 检查 Python Proxy 是否在线，并自动启动（如果配置了自动启动）
  */
 async function isProxyAlive() {
   try {
@@ -135,6 +269,29 @@ async function isProxyAlive() {
   } catch (e) {
     return false;
   }
+}
+
+/**
+ * 检测并启动 Python Proxy
+ * @param {boolean} autoStart - 是否自动启动（从配置读取）
+ */
+async function checkAndStartPythonProxy(autoStart = false) {
+  const alive = await isProxyAlive();
+
+  if (alive) {
+    log('Python', '✅ Python Proxy 在线');
+    return { alive: true, started: false };
+  }
+
+  log('Python', '⚠️ Python Proxy 未运行');
+
+  if (autoStart) {
+    log('Python', '配置了自动启动，正在启动...');
+    startPythonProxy();
+    return { alive: false, started: true, autoStart: true };
+  }
+
+  return { alive: false, started: false, autoStart: false };
 }
 
 /**
@@ -364,8 +521,44 @@ ipcMain.handle('proxy-status', async () => {
   const alive = await isProxyAlive();
   return {
     alive,
-    url: PROXY_URL
+    url: PROXY_URL,
+    scriptPath: PYTHON_SCRIPT,
+    isManaged: true, // 桌面端是否在管理这个进程
+    pid: pythonProcess ? pythonProcess.pid : null
   };
+});
+
+/**
+ * IPC Handler: 重启 Python Proxy（手动热更新）
+ */
+ipcMain.handle('proxy-restart', async () => {
+  if (!pythonProcess) {
+    // 未运行时，先启动
+    startPythonProxy();
+    return { success: true, action: 'started' };
+  }
+
+  restartPythonProxy();
+  return { success: true, action: 'restarted' };
+});
+
+/**
+ * IPC Handler: 停止 Python Proxy
+ */
+ipcMain.handle('proxy-stop', async () => {
+  stopPythonProxy();
+  return { success: true };
+});
+
+/**
+ * IPC Handler: 启动 Python Proxy
+ */
+ipcMain.handle('proxy-start', async () => {
+  if (pythonProcess) {
+    return { success: true, alreadyRunning: true };
+  }
+  startPythonProxy();
+  return { success: true, action: 'started' };
 });
 
 // ============================================================
@@ -377,13 +570,19 @@ app.whenReady().then(async () => {
   log('App', 'AI Claw Desktop 启动中...');
   log('App', `服务器地址: ${SERVER_URL}`);
   log('App', `Python Proxy: ${PROXY_URL}`);
+  log('App', `Python 脚本: ${PYTHON_SCRIPT}`);
+  log('App', `自动启动: ${envConfig.AUTO_START_PYTHON !== 'false' ? '是' : '否'}`);
 
-  // 检查 Proxy 是否在线（不阻塞启动）
-  const proxyAlive = await isProxyAlive();
-  if (proxyAlive) {
-    log('App', 'Python Proxy 在线 ✓');
+  // 检查 Proxy 是否在线，并自动启动（如果配置了）
+  const autoStart = envConfig.AUTO_START_PYTHON !== 'false'; // 默认自动启动
+  const result = await checkAndStartPythonProxy(autoStart);
+
+  if (result.alive) {
+    log('App', '✅ Python Proxy 在线 ✓');
+  } else if (result.started) {
+    log('App', '⏳ 正在启动 Python Proxy...');
   } else {
-    log('App', 'Python Proxy 未启动（本地功能将在首次使用时提示）', 'WARN');
+    log('App', '⚠️ Python Proxy 未启动（本地功能将在首次使用时提示）');
   }
 
   createWindow();
@@ -408,6 +607,7 @@ app.on('window-all-closed', () => {
 // 应用退出前
 app.on('before-quit', () => {
   log('App', '应用即将退出');
+  stopPythonProxy(); // 清理Python进程
 });
 
 // 捕获未处理的异常

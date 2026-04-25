@@ -261,7 +261,7 @@ def get_local_ip():
 
 
 def main():
-    """主函数"""
+    """主函数（标准模式，用于直接 python main.py）"""
     host = config.host
     port = config.port
     local_ip = get_local_ip()
@@ -276,6 +276,9 @@ def main():
     print("=" * 50)
     print()
     print("  接口文档: http://localhost:{}/docs".format(port))
+    print()
+    print("  💡 提示: 如需热更新开发，请使用:")
+    print("     python -m uvicorn main:app --reload --host 0.0.0.0 --port 6789")
     print()
 
     # 启动服务
