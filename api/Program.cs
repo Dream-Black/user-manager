@@ -16,10 +16,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // 注册 HttpClient 和 AI 服务
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AiService>();
-if (isDevelopment)
-{
-    builder.Services.AddScoped<IFileLogService, FileLogService>();
-}
+builder.Services.AddScoped<IFileLogService, FileLogService>(); // 所有环境都需要
 
 // 配置控制器 + JSON选项
 builder.Services.AddControllers()
@@ -513,22 +510,23 @@ using (var scope = app.Services.CreateScope())
                     ReminderTime TIME(6) NOT NULL DEFAULT '08:30:00',
                     ReminderEnabled TINYINT(1) NOT NULL DEFAULT 1,
                     ThemeMode VARCHAR(20) NOT NULL DEFAULT 'light',
-                    UpdatedAt DATETIME(6) NOT NULL
+                    UpdatedAt DATETIME(6) NOT NULL,
+                    DeepSeekModel VARCHAR(100) NOT NULL DEFAULT 'deepseek-chat'
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
             command.ExecuteNonQuery();
             
             // 插入默认设置
             command.CommandText = @"
-                INSERT INTO UserSettings (Id, UpdatedAt) VALUES (1, NOW())
+                INSERT INTO UserSettings (Id, DeepSeekModel, UpdatedAt) VALUES (1, 'deepseek-chat', NOW())
                 ON DUPLICATE KEY UPDATE UpdatedAt=VALUES(UpdatedAt)";
             command.ExecuteNonQuery();
             logger.LogInformation("✓ UserSettings 表已创建并填充默认数据");
         }
         else
         {
-            // 确保种子数据存在
+            // 确保种子数据存在（补充缺失字段）
             command.CommandText = @"
-                INSERT INTO UserSettings (Id, UpdatedAt) VALUES (1, NOW())
+                INSERT INTO UserSettings (Id, DeepSeekModel, UpdatedAt) VALUES (1, 'deepseek-chat', NOW())
                 ON DUPLICATE KEY UPDATE UpdatedAt=VALUES(UpdatedAt)";
             command.ExecuteNonQuery();
         }
