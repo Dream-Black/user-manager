@@ -197,6 +197,10 @@ export const aiService = {
     return api.post(`/ai/conversations/${conversationId}/messages/${messageId}/confirm-draft`)
   },
 
+  cancelDraft: async (conversationId, messageId) => {
+    return api.post(`/ai/conversations/${conversationId}/messages/${messageId}/cancel-draft`)
+  },
+
   // 删除对话
   deleteConversation: async (id) => {
     return api.delete(`/ai/conversations/${id}`)

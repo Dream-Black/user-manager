@@ -14,14 +14,16 @@ public class AiService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly AppDbContext _context;
     private readonly ILogger<AiService> _logger;
+    private readonly IFileLogService _fileLog;
     private const string DeepSeekBaseUrl = "https://api.deepseek.com/v1";
     private const int MaxFunctionCallRounds = 5;
 
-    public AiService(IHttpClientFactory httpClientFactory, AppDbContext context, ILogger<AiService> logger)
+    public AiService(IHttpClientFactory httpClientFactory, AppDbContext context, ILogger<AiService> logger, IFileLogService fileLog)
     {
         _httpClientFactory = httpClientFactory;
         _context = context;
         _logger = logger;
+        _fileLog = fileLog;
     }
 
     // ==================== 对话管理 ====================
@@ -75,8 +77,17 @@ public class AiService
         if (message.Role != "user")
             throw new InvalidOperationException("仅支持编辑用户消息");
 
+        var originalCreatedAt = message.CreatedAt;
         message.Content = content;
-        message.CreatedAt = DateTime.Now;
+
+        var downstreamMessages = await _context.ChatMessages
+            .Where(m => m.ConversationId == conversationId && m.CreatedAt > originalCreatedAt)
+            .ToListAsync();
+
+        if (downstreamMessages.Count > 0)
+        {
+            _context.ChatMessages.RemoveRange(downstreamMessages);
+        }
 
         var conversation = await _context.Conversations.FindAsync(conversationId);
         if (conversation != null)
@@ -126,8 +137,23 @@ public class AiService
         var draft = ParseDraft(message.Attachments);
         if (draft == null || string.IsNullOrWhiteSpace(draft.Kind) || string.IsNullOrWhiteSpace(draft.Mode))
             throw new InvalidOperationException("草案格式无效");
+        EnsureDraftIsActive(draft);
+        ValidateDraft(draft);
 
-        object? result = draft.Kind switch
+        await _fileLog.WriteAsync("AI", "info", "确认草案请求", new
+        {
+            conversationId,
+            messageId,
+            draft.Id,
+            draft.Kind,
+            draft.Mode,
+            draft.Title,
+            draft.Status,
+            draft.ExpiresAt,
+            payload = draft.Payload
+        });
+
+        var result = draft.Kind switch
         {
             "project" => await ConfirmProjectDraftAsync(draft),
             "task" => await ConfirmTaskDraftAsync(draft),
@@ -135,12 +161,90 @@ public class AiService
             _ => throw new InvalidOperationException("暂不支持该类型草案")
         };
 
+        draft.Status = "confirmed";
+
         message.Content = $"已确认并执行草案：{draft.Title ?? draft.Kind}";
-        message.Attachments = null;
+        message.Attachments = JsonSerializer.Serialize(new
+        {
+            id = draft.Id,
+            schemaVersion = draft.SchemaVersion,
+            type = "action_result",
+            status = "confirmed",
+            kind = draft.Kind,
+            mode = draft.Mode,
+            title = draft.Title,
+            result
+        });
         message.CreatedAt = DateTime.Now;
+
+        _context.ChatMessages.Add(new ChatMessage
+        {
+            ConversationId = conversationId,
+            Role = "system",
+            Content = JsonSerializer.Serialize(new
+            {
+                type = "action_result",
+                status = "confirmed",
+                kind = draft.Kind,
+                mode = draft.Mode,
+                title = draft.Title,
+                result
+            }),
+            CreatedAt = DateTime.Now
+        });
+
         await _context.SaveChangesAsync();
 
         return result;
+    }
+
+    public async Task<object?> CancelActionDraftAsync(int conversationId, int messageId)
+    {
+        var message = await _context.ChatMessages
+            .FirstOrDefaultAsync(m => m.Id == messageId && m.ConversationId == conversationId);
+        if (message == null) return null;
+        if (message.Role != "assistant" || string.IsNullOrWhiteSpace(message.Attachments))
+            throw new InvalidOperationException("当前消息没有可取消的草案");
+
+        var draft = ParseDraft(message.Attachments);
+        if (draft == null || string.IsNullOrWhiteSpace(draft.Kind) || string.IsNullOrWhiteSpace(draft.Mode))
+            throw new InvalidOperationException("草案格式无效");
+
+        EnsureDraftIsActive(draft);
+        ValidateDraft(draft);
+
+        message.Content = $"已取消草案：{draft.Title ?? draft.Kind}";
+        message.Attachments = JsonSerializer.Serialize(new
+        {
+            id = draft.Id,
+            schemaVersion = draft.SchemaVersion,
+            type = "action_result",
+            status = "cancelled",
+            kind = draft.Kind,
+            mode = draft.Mode,
+            title = draft.Title
+        });
+        message.CreatedAt = DateTime.Now;
+
+        _context.ChatMessages.Add(new ChatMessage
+        {
+            ConversationId = conversationId,
+            Role = "system",
+            Content = JsonSerializer.Serialize(new
+            {
+                id = draft.Id,
+                schemaVersion = draft.SchemaVersion,
+                type = "action_result",
+                status = "cancelled",
+                kind = draft.Kind,
+                mode = draft.Mode,
+                title = draft.Title
+            }),
+            CreatedAt = DateTime.Now
+        });
+
+        await _context.SaveChangesAsync();
+        return new { kind = draft.Kind, action = "cancelled", title = draft.Title };
     }
 
     // ==================== 核心聊天（流式） ====================
@@ -163,10 +267,13 @@ public class AiService
         var conversation = await _context.Conversations.FindAsync(conversationId);
         if (conversation == null)
         {
+            await _fileLog.WriteAsync("AI", "warn", "对话不存在", new { conversationId, userMessage });
             await onEvent(SseEvent("error", "对话不存在"));
             await onEvent(SseDone());
             return;
         }
+
+        await _fileLog.WriteAsync("AI", "info", "收到聊天请求", new { conversationId, deepThink, userMessage, attachmentsJson });
 
         // 保存用户消息
         var userMsg = new ChatMessage
@@ -254,6 +361,7 @@ public class AiService
         {
             round++;
             var json = JsonSerializer.Serialize(requestBody);
+            await _fileLog.WriteRawAsync("AI", "debug", $"DeepSeek request round={round} body={json}");
             var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
             var response = await client.PostAsync($"{DeepSeekBaseUrl}/chat/completions", httpContent);
 
@@ -261,6 +369,7 @@ public class AiService
             {
                 var error = await response.Content.ReadAsStringAsync();
                 _logger.LogError("DeepSeek API error: {Error}", error);
+                await _fileLog.WriteAsync("AI", "error", "DeepSeek API 请求失败", new { round, statusCode = (int)response.StatusCode, error });
                 await onEvent(SseEvent("error", $"API 请求失败 ({response.StatusCode})"));
                 break;
             }
@@ -415,6 +524,15 @@ public class AiService
                 ?? ExtractActionDraft(rawAssistantText)
                 ?? BuildHeuristicDraft(userMessage, rawAssistantText);
 
+            await _fileLog.WriteAsync("AI", string.IsNullOrWhiteSpace(actionDraftJson) ? "warn" : "info", "草案解析完成", new
+            {
+                conversationId,
+                wantsDraft,
+                hasDraft = !string.IsNullOrWhiteSpace(actionDraftJson),
+                rawAssistantText,
+                actionDraftJson
+            });
+
             cleanContent = string.IsNullOrWhiteSpace(actionDraftJson)
                 ? rawAssistantText
                 : "已生成待确认草案，请点击确认卡完成写入。";
@@ -448,6 +566,15 @@ public class AiService
             Attachments = string.IsNullOrWhiteSpace(actionDraftJson) ? null : actionDraftJson,
             CreatedAt = DateTime.Now
         };
+        await _fileLog.WriteAsync("AI", "info", "AI 回复保存", new
+        {
+            conversationId,
+            hasDraft = !string.IsNullOrWhiteSpace(actionDraftJson),
+            draftJson = actionDraftJson,
+            assistantContent = fullContent.ToString(),
+            reasoningLength = reasoningContent.Length,
+            toolCallCount = toolCallsList.Count
+        });
         _context.ChatMessages.Add(assistantMsg);
 
         // 更新对话时间
@@ -830,11 +957,11 @@ public class AiService
             : $"\n\n用户偏好摘要：{conversation.MemorySummary}";
 
         // 系统提示词
-        var draftFormat = "<action_draft>{\"kind\":\"project|task|resource\",\"mode\":\"create|update\",\"title\":\"...\",\"targetLabel\":\"...\",\"before\":\"...\",\"after\":\"...\",\"preview\":\"...\",\"payload\":{...}}</action_draft>";
+        var draftFormat = BuildDraftSchemaPrompt();
         var permissionNote = "你具备生成新增/编辑草案的能力。你不能直接落库，但可以输出待确认草案。不要说“我没有权限”，应表述为“需要你确认后由系统执行”。";
         var systemPrompt = deepThink
-            ? $"{permissionNote} 你是 ProjectHub 的个人工作助理，具备数据库查询能力。你可以调用工具来获取项目、任务等数据。请用中文回答，给出具体的分析和建议。当你需要数据时，直接调用相应的工具函数获取实时数据。若你判断用户意图是新增/编辑项目、任务、资源，请先生成一个结构化写入草案，但不要直接写库；草案必须是严格 JSON，并且只放在回复末尾的 {draftFormat} 中，正文要先解释依据。{memorySummary}"
-            : $"{permissionNote} 你是 ProjectHub 的个人工作助理，可以用中文帮助用户查询项目进度、任务状态等。请简洁专业地回答。当用户询问今天该做什么或项目情况时，请先调用工具查询实时数据再回答。若你判断用户意图是新增/编辑项目、任务、资源，请先生成一个结构化写入草案，但不要直接写库；草案必须是严格 JSON，并且只放在回复末尾的 {draftFormat} 中，正文要先解释依据。{memorySummary}";
+            ? $"{permissionNote} 你是 ProjectHub 的个人工作助理，具备数据库查询能力。你可以调用工具来获取项目、任务等数据。请用中文回答，给出具体的分析和建议。当你需要数据时，直接调用相应的工具函数获取实时数据。若你判断用户意图是新增/编辑项目、任务、资源，请先生成一个结构化写入草案，但不要直接写库；草案必须是严格 JSON，并且只放在回复末尾，格式必须符合：{draftFormat}。正文要先解释依据。{memorySummary}"
+            : $"{permissionNote} 你是 ProjectHub 的个人工作助理，可以用中文帮助用户查询项目进度、任务状态等。请简洁专业地回答。当用户询问今天该做什么或项目情况时，请先调用工具查询实时数据再回答。若你判断用户意图是新增/编辑项目、任务、资源，请先生成一个结构化写入草案，但不要直接写库；草案必须是严格 JSON，并且只放在回复末尾，格式必须符合：{draftFormat}。正文要先解释依据。{memorySummary}";
 
         messages.Add(new
         {
@@ -941,19 +1068,23 @@ public class AiService
             _ => title
         };
 
-        var payload = kind == "task"
-            ? BuildTaskPayloadFromText(userMessage)
-            : new JsonObject();
+        var mode = GuessDraftMode(userMessage);
+        var payload = BuildPayloadFromText(kind, mode, userMessage, title);
 
+        var payloadPreview = payload.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
         var draft = new ActionDraftDto
         {
+            Id = BuildDraftId(kind, mode, title),
             Kind = kind,
-            Mode = GuessDraftMode(userMessage),
-            Title = $"新增{getDraftKindLabel(kind)}：{title}",
+            Mode = mode,
+            Title = $"{(mode == "create" ? "新增" : "更新")}{getDraftKindLabel(kind)}：{title}",
             TargetLabel = targetLabel,
-            Before = "无",
+            Before = payloadPreview,
             After = assistantText,
             Preview = assistantText,
+            Status = "pending",
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddHours(24),
             Payload = payload
         };
 
@@ -973,6 +1104,65 @@ public class AiService
         return text.Contains("加") || text.Contains("新增") || text.Contains("创建") || text.Contains("新建") ? "create" : "update";
     }
 
+    private static JsonObject BuildPayloadFromText(string kind, string mode, string userMessage, string title)
+    {
+        var payload = new JsonObject();
+
+        if (kind == "project")
+        {
+            if (mode == "create")
+            {
+                payload["name"] = title;
+            }
+            else
+            {
+                payload["id"] = ExtractNumericId(userMessage);
+                payload["name"] = title;
+            }
+
+            payload["type"] = ExtractTextAfterKeywords(userMessage, new[] { "类型", "类别", "项目类型" });
+            payload["customer"] = ExtractTextAfterKeywords(userMessage, new[] { "客户", "甲方" });
+            payload["status"] = ExtractTextAfterKeywords(userMessage, new[] { "状态", "进度" });
+        }
+        else if (kind == "task")
+        {
+            if (mode == "create")
+            {
+                payload["title"] = title;
+                payload["projectId"] = ExtractNumericId(userMessage, new[] { "项目", "归到项目", "在项目", "放到项目" });
+            }
+            else
+            {
+                payload["id"] = ExtractNumericId(userMessage);
+                payload["title"] = title;
+            }
+
+            payload["description"] = ExtractTextAfterKeywords(userMessage, new[] { "描述", "说明" });
+            payload["category"] = ExtractTextAfterKeywords(userMessage, new[] { "分类", "类型" });
+            payload["priority"] = ExtractTextAfterKeywords(userMessage, new[] { "优先级" });
+            payload["status"] = ExtractTextAfterKeywords(userMessage, new[] { "状态" });
+            payload["planEndDate"] = userMessage.Contains("今天") ? DateTime.Today.ToString("yyyy-MM-dd") : null;
+        }
+        else if (kind == "resource")
+        {
+            if (mode == "create")
+            {
+                payload["computerId"] = ExtractNumericId(userMessage, new[] { "电脑", "设备", "机器" });
+                payload["path"] = ExtractTextAfterKeywords(userMessage, new[] { "路径", "地址" });
+            }
+            else
+            {
+                payload["id"] = ExtractNumericId(userMessage);
+                payload["path"] = ExtractTextAfterKeywords(userMessage, new[] { "路径", "地址" });
+            }
+
+            payload["type"] = ExtractTextAfterKeywords(userMessage, new[] { "资源类型", "类型" });
+            payload["isEnabled"] = ExtractTextAfterKeywords(userMessage, new[] { "启用", "停用" }) == "启用";
+        }
+
+        return payload;
+    }
+
     private static string ExtractDraftTitle(string text, string kind)
     {
         var cleaned = text.Replace("帮我", string.Empty).Replace("再", string.Empty).Replace("加个", string.Empty).Replace("新增", string.Empty).Replace("创建", string.Empty).Replace("新建", string.Empty).Trim();
@@ -984,12 +1174,42 @@ public class AiService
         return cleaned.Length > 20 ? cleaned[..20] : cleaned;
     }
 
+    private static int? ExtractNumericId(string text, IEnumerable<string>? prefixes = null)
+    {
+        var pattern = prefixes == null || !prefixes.Any()
+            ? @"(?<!\d)(\d+)(?!\d)"
+            : $"(?:{string.Join("|", prefixes.Select(Regex.Escape))})[：:\\s#]*([0-9]+)";
+
+        var match = Regex.Match(text, pattern);
+        return match.Success && int.TryParse(match.Groups[match.Groups.Count > 1 ? 1 : 0].Value, out var id) ? id : null;
+    }
+
+    private static string? ExtractTextAfterKeywords(string text, IEnumerable<string> keywords)
+    {
+        foreach (var keyword in keywords)
+        {
+            var match = Regex.Match(text, $@"{Regex.Escape(keyword)}[：:\\s]*(.+?)(?:[，,。；;]|$)");
+            if (match.Success)
+            {
+                var value = match.Groups[1].Value.Trim();
+                if (!string.IsNullOrWhiteSpace(value)) return value;
+            }
+        }
+        return null;
+    }
+
     private static JsonObject BuildTaskPayloadFromText(string userMessage)
     {
         var payload = new JsonObject();
         var titleMatch = Regex.Match(userMessage, @"(?:加个任务|新增任务|创建任务|新加个任务|帮我加个任务)[，,\s]*(.+?)(?:今天|截止|到期|$)");
         var title = titleMatch.Success ? titleMatch.Groups[1].Value.Trim() : userMessage.Trim();
         payload["title"] = title;
+
+        var projectIdMatch = Regex.Match(userMessage, @"(?:项目|归到项目|在项目|放到项目)[：:\s#]*([0-9]+)");
+        if (projectIdMatch.Success && int.TryParse(projectIdMatch.Groups[1].Value, out var projectId))
+        {
+            payload["projectId"] = projectId;
+        }
 
         if (userMessage.Contains("今天"))
         {
@@ -1024,6 +1244,75 @@ public class AiService
         }
     }
 
+    private static string BuildDraftId(string kind, string mode, string title)
+        => Convert.ToBase64String(Encoding.UTF8.GetBytes($"{kind}|{mode}|{title}|{DateTime.UtcNow:O}"));
+
+    private static string BuildDraftSchemaPrompt()
+    {
+        return "json schema examples: " +
+               "project.create => {\"id\":\"...\",\"schemaVersion\":1,\"kind\":\"project\",\"mode\":\"create\",\"title\":\"新增项目：官网重构\",\"targetLabel\":\"项目：官网重构\",\"before\":\"无\",\"after\":\"创建一个新的官网重构项目，默认状态为 active\",\"preview\":\"项目名称：官网重构；类型：work；状态：active\",\"status\":\"pending\",\"createdAt\":\"2026-04-25T00:00:00Z\",\"expiresAt\":\"2026-04-26T00:00:00Z\",\"payload\":{\"name\":\"官网重构\",\"type\":\"work\",\"status\":\"active\"}}; " +
+               "project.update => {\"id\":\"...\",\"schemaVersion\":1,\"kind\":\"project\",\"mode\":\"update\",\"title\":\"更新项目：官网重构\",\"targetLabel\":\"项目ID:12\",\"before\":\"名称=旧名称\",\"after\":\"名称=新名称\",\"preview\":\"把项目 12 的名称改为 新名称\",\"status\":\"pending\",\"createdAt\":\"2026-04-25T00:00:00Z\",\"expiresAt\":\"2026-04-26T00:00:00Z\",\"payload\":{\"id\":12,\"name\":\"新名称\"}}; " +
+               "task.create => {\"id\":\"...\",\"schemaVersion\":1,\"kind\":\"task\",\"mode\":\"create\",\"title\":\"新增任务：接口联调\",\"targetLabel\":\"项目ID:3\",\"before\":\"无\",\"after\":\"在项目 3 下创建任务 接口联调\",\"preview\":\"任务标题：接口联调；项目ID：3；优先级：medium；状态：todo\",\"status\":\"pending\",\"createdAt\":\"2026-04-25T00:00:00Z\",\"expiresAt\":\"2026-04-26T00:00:00Z\",\"payload\":{\"title\":\"接口联调\",\"projectId\":3,\"priority\":\"medium\",\"status\":\"todo\"}}; " +
+               "task.update => {\"id\":\"...\",\"schemaVersion\":1,\"kind\":\"task\",\"mode\":\"update\",\"title\":\"更新任务：接口联调\",\"targetLabel\":\"任务ID:88\",\"before\":\"状态=todo\",\"after\":\"状态=in_progress\",\"preview\":\"把任务 88 状态改为进行中\",\"status\":\"pending\",\"createdAt\":\"2026-04-25T00:00:00Z\",\"expiresAt\":\"2026-04-26T00:00:00Z\",\"payload\":{\"id\":88,\"status\":\"in_progress\"}}; " +
+               "resource.create => {\"id\":\"...\",\"schemaVersion\":1,\"kind\":\"resource\",\"mode\":\"create\",\"title\":\"新增资源：漫画库\",\"targetLabel\":\"电脑ID:1\",\"before\":\"无\",\"after\":\"在电脑 1 新增一个资源路径 /data/comics\",\"preview\":\"电脑ID：1；类型：comic；路径：/data/comics；启用：true\",\"status\":\"pending\",\"createdAt\":\"2026-04-25T00:00:00Z\",\"expiresAt\":\"2026-04-26T00:00:00Z\",\"payload\":{\"computerId\":1,\"type\":\"comic\",\"path\":\"/data/comics\",\"isEnabled\":true}}; " +
+               "resource.update => {\"id\":\"...\",\"schemaVersion\":1,\"kind\":\"resource\",\"mode\":\"update\",\"title\":\"更新资源：漫画库\",\"targetLabel\":\"资源ID:7\",\"before\":\"path=/old\",\"after\":\"path=/new\",\"preview\":\"把资源 7 的路径改为 /new\",\"status\":\"pending\",\"createdAt\":\"2026-04-25T00:00:00Z\",\"expiresAt\":\"2026-04-26T00:00:00Z\",\"payload\":{\"id\":7,\"path\":\"/new\"}}";
+    }
+
+    private static void EnsureDraftIsActive(ActionDraftDto draft)
+    {
+        if (!string.Equals(draft.Status, "pending", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("草案已处理，不能重复操作");
+
+        if (draft.ExpiresAt.HasValue && draft.ExpiresAt.Value.ToUniversalTime() < DateTime.UtcNow)
+            throw new InvalidOperationException("草案已过期，请重新生成");
+    }
+
+    private static void ValidateDraft(ActionDraftDto draft)
+    {
+        var payload = draft.Payload ?? new JsonObject();
+
+        string RequireString(string key, string message)
+        {
+            var value = payload[key]?.ToString();
+            if (string.IsNullOrWhiteSpace(value)) throw new InvalidOperationException(message);
+            return value;
+        }
+
+        int RequireInt(string key, string message)
+        {
+            var value = payload[key]?.GetValue<int?>();
+            if (!value.HasValue || value.Value <= 0) throw new InvalidOperationException(message);
+            return value.Value;
+        }
+
+        switch ($"{draft.Kind}.{draft.Mode}")
+        {
+            case "project.create":
+                RequireString("name", "项目草案缺少名称");
+                break;
+            case "project.update":
+                RequireInt("id", "项目更新草案缺少 ID");
+                RequireString("name", "项目更新草案缺少名称");
+                break;
+            case "task.create":
+                RequireString("title", "任务草案缺少标题");
+                RequireInt("projectId", "任务草案缺少项目 ID");
+                break;
+            case "task.update":
+                RequireInt("id", "任务更新草案缺少 ID");
+                RequireString("title", "任务更新草案缺少标题");
+                break;
+            case "resource.create":
+                RequireInt("computerId", "资源草案缺少电脑 ID");
+                RequireString("path", "资源草案缺少路径");
+                break;
+            case "resource.update":
+                RequireInt("id", "资源更新草案缺少 ID");
+                RequireString("path", "资源更新草案缺少路径");
+                break;
+        }
+    }
+
     private async Task<object> ConfirmProjectDraftAsync(ActionDraftDto draft)
     {
         var payload = draft.Payload ?? new JsonObject();
@@ -1033,7 +1322,7 @@ public class AiService
             {
                 Name = payload["name"]?.ToString() ?? draft.Title ?? "未命名项目",
                 Description = payload["description"]?.ToString(),
-                Type = payload["type"]?.ToString() ?? "web",
+                Type = payload["type"]?.ToString() ?? "work",
                 Customer = payload["customer"]?.ToString(),
                 Status = payload["status"]?.ToString() ?? "active",
                 CreatedAt = DateTime.Now,
@@ -1153,6 +1442,8 @@ public class AiService
 
     private sealed class ActionDraftDto
     {
+        public string? Id { get; set; }
+        public int SchemaVersion { get; set; } = 1;
         public string? Kind { get; set; }
         public string? Mode { get; set; }
         public string? Title { get; set; }
@@ -1161,6 +1452,9 @@ public class AiService
         public string? After { get; set; }
         public string? Preview { get; set; }
         public JsonObject? Payload { get; set; }
+        public string? Status { get; set; }
+        public DateTime? CreatedAt { get; set; }
+        public DateTime? ExpiresAt { get; set; }
     }
 
     private static string SseDone()

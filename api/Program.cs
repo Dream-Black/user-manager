@@ -499,6 +499,7 @@ using (var scope = app.Services.CreateScope())
         logger.LogError(ex, "数据库结构同步失败");
     }
 }
+}
 
 app.UseSwagger(options =>
 {

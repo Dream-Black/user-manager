@@ -139,12 +139,40 @@
                   <span class="action-draft-type">{{ getKindLabel(msg.actionDraft.kind) }}</span>
                   <h4 class="action-draft-title">{{ msg.actionDraft.title }}</h4>
                 </div>
-                <button class="btn-mini action-confirm-btn" @click="openActionDraft(msg)">确认</button>
+                <div class="action-draft-actions">
+                  <button class="btn-mini action-cancel-btn" @click="cancelDraft(msg)">取消</button>
+                  <button class="btn-mini action-confirm-btn" @click="openActionDraft(msg)">确认</button>
+                </div>
               </div>
-              <div class="action-draft-preview">{{ msg.actionDraft.preview }}</div>
+              <div v-if="!msg.actionDraft.validation.ok" class="action-feedback error">
+                草案缺少必要字段：{{ msg.actionDraft.validation.errors.join('、') }}
+              </div>
+              <div class="draft-diff-grid">
+                <div class="diff-item">
+                  <span class="diff-label">目标</span>
+                  <div class="diff-value">{{ msg.actionDraft.targetLabel || '未识别' }}</div>
+                </div>
+                <div class="diff-item">
+                  <span class="diff-label">模式</span>
+                  <div class="diff-value">{{ msg.actionDraft.mode === 'create' ? '新增' : '更新' }}</div>
+                </div>
+                <div class="diff-item full-width">
+                  <span class="diff-label">变更前</span>
+                  <div class="diff-value muted">{{ msg.actionDraft.before || '无' }}</div>
+                </div>
+                <div class="diff-item full-width">
+                  <span class="diff-label">变更后</span>
+                  <div class="diff-value">{{ msg.actionDraft.after || '无' }}</div>
+                </div>
+                <div class="diff-item full-width">
+                  <span class="diff-label">预览</span>
+                  <div class="diff-value preview">{{ msg.actionDraft.preview }}</div>
+                </div>
+              </div>
               <div class="action-draft-meta">
-                <span class="mini-badge muted">{{ msg.actionDraft.mode === 'create' ? '新增' : '更新' }}</span>
-                <span class="action-draft-target">{{ msg.actionDraft.targetLabel }}</span>
+                <span class="mini-badge muted">{{ msg.actionDraft.status || 'pending' }}</span>
+                <span class="mini-badge muted">v{{ msg.actionDraft.schemaVersion || 1 }}</span>
+                <span class="action-draft-target">{{ msg.actionDraft.expiresAt ? `过期：${msg.actionDraft.expiresAt}` : '' }}</span>
               </div>
             </div>
 
@@ -192,16 +220,29 @@
           <div class="action-confirm-body">
             <div class="action-confirm-diff">
               <div class="diff-column">
-                <span class="diff-label">当前内容</span>
-                <div class="diff-box muted">{{ pendingAction.before || '无' }}</div>
+                <span class="diff-label">目标</span>
+                <div class="diff-box muted">{{ pendingAction.targetLabel || '未识别' }}</div>
               </div>
               <div class="diff-column">
-                <span class="diff-label">建议内容</span>
+                <span class="diff-label">模式</span>
+                <div class="diff-box">{{ pendingAction.mode === 'create' ? '新增' : '更新' }}</div>
+              </div>
+              <div class="diff-column full-width">
+                <span class="diff-label">概述</span>
+                <div class="diff-box muted">{{ pendingAction.summary || pendingAction.preview || '无' }}</div>
+              </div>
+              <div class="diff-column full-width">
+                <span class="diff-label">变更前</span>
+                <div class="diff-box muted">{{ pendingAction.before || '无' }}</div>
+              </div>
+              <div class="diff-column full-width">
+                <span class="diff-label">变更后</span>
                 <div class="diff-box">{{ pendingAction.after || '无' }}</div>
               </div>
             </div>
             <div class="action-confirm-meta">
               <span class="mini-badge">{{ getKindLabel(pendingAction.kind) }}</span>
+              <span class="mini-badge muted">v{{ pendingAction.schemaVersion || 1 }}</span>
               <span class="action-confirm-tip">先预览再确认执行，避免误写入</span>
             </div>
             <div v-if="actionFeedback" class="action-feedback" :class="actionFeedbackType">
@@ -430,6 +471,19 @@ async function sendMessage() {
   const isEditing = !!editingMessage.value?.id
 
   if (isEditing) {
+    const editingMsgIndex = messages.value.findIndex(m => m._id === editingMessage.value._id)
+    if (editingMsgIndex === -1) {
+      console.error('编辑消息失败: 未找到本地消息')
+      return
+    }
+
+    messages.value = messages.value.slice(0, editingMsgIndex + 1)
+    messages.value[editingMsgIndex] = {
+      ...messages.value[editingMsgIndex],
+      content: text,
+      filesJson: [...userFiles]
+    }
+
     try {
       await aiService.updateMessage(currentConvId.value, editingMessage.value.id, { content: text })
       editingMessage.value = null
@@ -455,7 +509,6 @@ async function sendMessage() {
     inputRef.value.style.height = 'auto'
   }
 
-  const attachments = [...pendingAttachments.value]
   pendingAttachments.value = []
 
   await nextTick()
@@ -664,9 +717,26 @@ async function togglePin(conv) {
 
 function openActionDraft(message) {
   console.log('[AI] openActionDraft', { id: message?.id, actionDraft: message?.actionDraft })
+  if (message?.actionDraft?.validation && !message.actionDraft.validation.ok) {
+    setActionFeedback(`草案缺少必要字段：${message.actionDraft.validation.errors.join('、')}`, 'error')
+    return
+  }
   pendingAction.value = message?.actionDraft || null
   pendingActionVisible.value = !!pendingAction.value
   editableMessageId.value = message?.id || null
+}
+
+async function cancelDraft(message) {
+  if (!message?.id || !currentConvId.value) return
+  try {
+    await aiService.cancelDraft(currentConvId.value, message.id)
+    if (pendingAction.value && editableMessageId.value === message.id) {
+      cancelPendingAction()
+    }
+    await reloadMessages()
+  } catch (e) {
+    console.error('取消草案失败:', e)
+  }
 }
 
 function normalizeDraft(raw) {
@@ -674,6 +744,8 @@ function normalizeDraft(raw) {
   if (!obj || typeof obj !== 'object') return null
   const payload = obj.payload || {}
   return {
+    id: obj.id || `${obj.kind || 'unknown'}-${Date.now()}`,
+    schemaVersion: obj.schemaVersion || 1,
     kind: obj.kind || 'unknown',
     mode: obj.mode || 'create',
     title: obj.title || '待确认操作',
@@ -681,12 +753,53 @@ function normalizeDraft(raw) {
     before: obj.before || '',
     after: obj.after || '',
     preview: obj.preview || '',
-    payload
+    status: obj.status || 'pending',
+    createdAt: obj.createdAt || null,
+    expiresAt: obj.expiresAt || null,
+    payload,
+    summary: obj.summary || '',
+    validation: validateDraftSchema(obj.kind || 'unknown', obj.mode || 'create', payload)
   }
 }
 
 function getKindLabel(kind) {
   return ({ project: '项目', task: '任务', resource: '资源' }[kind] || kind || '草案')
+}
+
+function validateDraftSchema(kind, mode, payload) {
+  const errors = []
+  const requireString = (key, label) => {
+    if (!payload?.[key] || String(payload[key]).trim() === '') errors.push(label)
+  }
+  const requireNumber = (key, label) => {
+    const v = Number(payload?.[key])
+    if (!Number.isFinite(v) || v <= 0) errors.push(label)
+  }
+
+  const signature = `${kind}.${mode}`
+  if (signature === 'project.create') {
+    requireString('name', '项目名称')
+  } else if (signature === 'project.update') {
+    requireNumber('id', '项目ID')
+    requireString('name', '项目名称')
+  } else if (signature === 'task.create') {
+    requireString('title', '任务标题')
+    requireNumber('projectId', '项目ID')
+  } else if (signature === 'task.update') {
+    requireNumber('id', '任务ID')
+    requireString('title', '任务标题')
+  } else if (signature === 'resource.create') {
+    requireNumber('computerId', '电脑ID')
+    requireString('path', '资源路径')
+  } else if (signature === 'resource.update') {
+    requireNumber('id', '资源ID')
+    requireString('path', '资源路径')
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors
+  }
 }
 
 function extractDraftMessage(message) {
@@ -701,7 +814,13 @@ function extractDraftMessage(message) {
 }
 
 function syncLatestDraft() {
-  const latest = [...messages.value].reverse().find(m => m.actionDraft)
+  const now = new Date()
+  const latest = [...messages.value].reverse().find(m => {
+    const draft = m.actionDraft
+    if (!draft || draft.status !== 'pending') return false
+    if (draft.expiresAt && new Date(draft.expiresAt) < now) return false
+    return true
+  })
   console.log('[AI] syncLatestDraft', { latestId: latest?.id, draft: latest?.actionDraft })
   if (!latest?.actionDraft) {
     pendingAction.value = null
@@ -726,6 +845,9 @@ function clearActionFeedback() {
 }
 
 function cancelPendingAction() {
+  if (pendingAction.value) {
+    pendingAction.value.status = 'cancelled'
+  }
   pendingAction.value = null
   pendingActionVisible.value = false
   editableMessageId.value = null
@@ -746,6 +868,11 @@ async function confirmPendingAction() {
   console.log('[AI] confirmPendingAction clicked', { currentConvId: currentConvId.value, editableMessageId: editableMessageId.value, pendingAction: pendingAction.value })
   if (!pendingAction.value || !currentConvId.value || !editableMessageId.value || confirmingPendingAction.value) return
 
+  if (pendingAction.value.expiresAt && new Date(pendingAction.value.expiresAt) < new Date()) {
+    setActionFeedback('草案已过期，请重新生成', 'error')
+    return
+  }
+
   confirmingPendingAction.value = true
   clearActionFeedback()
 
@@ -753,6 +880,7 @@ async function confirmPendingAction() {
     const res = await aiService.confirmDraft(currentConvId.value, editableMessageId.value)
     console.log('[AI] confirmDraft response', res)
     setActionFeedback(`已确认执行：${res?.kind || pendingAction.value.kind} - ${res?.action || 'completed'}`, 'success')
+    pendingAction.value.status = 'confirmed'
     pendingAction.value = null
     pendingActionVisible.value = false
     editableMessageId.value = null
@@ -1353,6 +1481,10 @@ function safeParse(str) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.full-width {
+  grid-column: 1 / -1;
 }
 
 .diff-label {

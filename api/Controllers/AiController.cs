@@ -147,6 +147,21 @@ public class AiController : ControllerBase
         }
     }
 
+    [HttpPost("conversations/{conversationId:int}/messages/{messageId:int}/cancel-draft")]
+    public async Task<IActionResult> CancelDraft(int conversationId, int messageId)
+    {
+        try
+        {
+            var result = await _aiService.CancelActionDraftAsync(conversationId, messageId);
+            if (result == null) return NotFound(new { message = "消息不存在" });
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpPatch("conversations/{id:int}/archive")]
     public async Task<IActionResult> ArchiveConversation(int id, [FromBody] ArchiveConversationRequest request)
     {
