@@ -66,9 +66,7 @@ app.Use(async (context, next) =>
     }
 });
 
-// 自动同步数据库结构
-if (isDevelopment)
-{
+// 自动同步数据库结构（所有环境都执行）
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -200,7 +198,38 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ Users 表已创建并填充默认数据");
         }
         
-        // 6. ResourcePaths 表（已移到独立代码块）
+        // 6. 创建 UserSettings 表（如果不存在）
+        if (!TableExists("UserSettings"))
+        {
+            command.CommandText = @"
+                CREATE TABLE UserSettings (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    DeepSeekApiKey VARCHAR(500) NULL,
+                    DeepSeekModel VARCHAR(100) NOT NULL DEFAULT 'deepseek-chat',
+                    WorkStartTime TIME(6) NOT NULL DEFAULT '09:00:00',
+                    WorkEndTime TIME(6) NOT NULL DEFAULT '18:00:00',
+                    LunchBreakStart TIME(6) NULL,
+                    LunchBreakEnd TIME(6) NULL,
+                    CommuteHours DECIMAL(65,30) NOT NULL DEFAULT 1,
+                    CurrentJob VARCHAR(200) NULL,
+                    CurrentCompany VARCHAR(200) NULL,
+                    CurrentPlan VARCHAR(500) NULL,
+                    ReminderTime TIME(6) NOT NULL DEFAULT '08:30:00',
+                    ReminderEnabled TINYINT(1) NOT NULL DEFAULT 1,
+                    ThemeMode VARCHAR(20) NOT NULL DEFAULT 'light',
+                    UpdatedAt DATETIME(6) NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            
+            // 插入默认设置
+            command.CommandText = @"
+                INSERT INTO UserSettings (Id, DeepSeekModel, UpdatedAt) VALUES (1, 'deepseek-chat', NOW())
+                ON DUPLICATE KEY UPDATE UpdatedAt=VALUES(UpdatedAt)";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ UserSettings 表已创建并填充默认数据");
+        }
+        
+        // 7. 创建 ResourcePaths 表（如果不存在）
         
         // 7. 创建 ResourcePaths 表（如果不存在）
         if (!TableExists("ResourcePaths"))
@@ -467,77 +496,6 @@ using (var scope = app.Services.CreateScope())
         logger.LogError(ex, "数据库结构同步失败");
     }
 }
-}
-
-// 确保 UserSettings 表存在（所有环境都要执行）
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    
-    try
-    {
-        var connection = db.Database.GetDbConnection();
-        connection.Open();
-        
-        using var command = connection.CreateCommand();
-        
-        // 检查表是否存在
-        bool TableExists(string tableName)
-        {
-            command.CommandText = $@"
-                SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES 
-                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{tableName}'";
-            return Convert.ToInt32(command.ExecuteScalar()) > 0;
-        }
-        
-        // 创建 UserSettings 表（如果不存在）
-        if (!TableExists("UserSettings"))
-        {
-            command.CommandText = @"
-                CREATE TABLE UserSettings (
-                    Id INT AUTO_INCREMENT PRIMARY KEY,
-                    DeepSeekApiKey VARCHAR(500) NULL,
-                    DeepSeekModel VARCHAR(100) NOT NULL DEFAULT 'deepseek-chat',
-                    WorkStartTime TIME(6) NOT NULL DEFAULT '09:00:00',
-                    WorkEndTime TIME(6) NOT NULL DEFAULT '18:00:00',
-                    LunchBreakStart TIME(6) NULL,
-                    LunchBreakEnd TIME(6) NULL,
-                    CommuteHours DECIMAL(65,30) NOT NULL DEFAULT 1,
-                    CurrentJob VARCHAR(200) NULL,
-                    CurrentCompany VARCHAR(200) NULL,
-                    CurrentPlan VARCHAR(500) NULL,
-                    ReminderTime TIME(6) NOT NULL DEFAULT '08:30:00',
-                    ReminderEnabled TINYINT(1) NOT NULL DEFAULT 1,
-                    ThemeMode VARCHAR(20) NOT NULL DEFAULT 'light',
-                    UpdatedAt DATETIME(6) NOT NULL,
-                    DeepSeekModel VARCHAR(100) NOT NULL DEFAULT 'deepseek-chat'
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-            command.ExecuteNonQuery();
-            
-            // 插入默认设置
-            command.CommandText = @"
-                INSERT INTO UserSettings (Id, DeepSeekModel, UpdatedAt) VALUES (1, 'deepseek-chat', NOW())
-                ON DUPLICATE KEY UPDATE UpdatedAt=VALUES(UpdatedAt)";
-            command.ExecuteNonQuery();
-            logger.LogInformation("✓ UserSettings 表已创建并填充默认数据");
-        }
-        else
-        {
-            // 确保种子数据存在（补充缺失字段）
-            command.CommandText = @"
-                INSERT INTO UserSettings (Id, DeepSeekModel, UpdatedAt) VALUES (1, 'deepseek-chat', NOW())
-                ON DUPLICATE KEY UPDATE UpdatedAt=VALUES(UpdatedAt)";
-            command.ExecuteNonQuery();
-        }
-        
-        connection.Close();
-        logger.LogInformation("✓ UserSettings 表检查完成");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "UserSettings 表初始化失败");
-    }
 }
 
 app.UseSwagger(options =>
