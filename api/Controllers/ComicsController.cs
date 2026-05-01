@@ -45,7 +45,7 @@ public class ComicsController : ControllerBase
 
         if (computerId.HasValue)
         {
-            query = query.Where(c => c.ResourcePath.ComputerId == computerId.Value);
+            query = query.Where(c => c.ResourcePath!.ComputerId == computerId.Value);
         }
 
         if (!string.IsNullOrEmpty(type))

@@ -1,5 +1,5 @@
 <template>
-  <div class="ai-page page-shell">
+  <div class="ai-page">
     <aside class="conv-sidebar card-shell">
       <div class="conv-header">
         <div>
@@ -209,53 +209,6 @@
       </div>
 
       <div class="chat-input-area">
-        <div v-if="pendingActionVisible && pendingAction" class="action-confirm-panel">
-          <div class="action-confirm-header">
-            <div>
-              <p class="section-kicker">待确认写入</p>
-              <h4 class="action-confirm-title">{{ pendingAction.title }}</h4>
-            </div>
-            <button class="icon-action-btn danger" @click="cancelPendingAction"><X /></button>
-          </div>
-          <div class="action-confirm-body">
-            <div class="action-confirm-diff">
-              <div class="diff-column">
-                <span class="diff-label">目标</span>
-                <div class="diff-box muted">{{ pendingAction.targetLabel || '未识别' }}</div>
-              </div>
-              <div class="diff-column">
-                <span class="diff-label">模式</span>
-                <div class="diff-box">{{ pendingAction.mode === 'create' ? '新增' : '更新' }}</div>
-              </div>
-              <div class="diff-column full-width">
-                <span class="diff-label">概述</span>
-                <div class="diff-box muted">{{ pendingAction.summary || pendingAction.preview || '无' }}</div>
-              </div>
-              <div class="diff-column full-width">
-                <span class="diff-label">变更前</span>
-                <div class="diff-box muted">{{ pendingAction.before || '无' }}</div>
-              </div>
-              <div class="diff-column full-width">
-                <span class="diff-label">变更后</span>
-                <div class="diff-box">{{ pendingAction.after || '无' }}</div>
-              </div>
-            </div>
-            <div class="action-confirm-meta">
-              <span class="mini-badge">{{ getKindLabel(pendingAction.kind) }}</span>
-              <span class="mini-badge muted">v{{ pendingAction.schemaVersion || 1 }}</span>
-              <span class="action-confirm-tip">先预览再确认执行，避免误写入</span>
-            </div>
-            <div v-if="actionFeedback" class="action-feedback" :class="actionFeedbackType">
-              {{ actionFeedback }}
-            </div>
-          </div>
-          <div class="action-confirm-footer">
-            <button class="btn-secondary" :disabled="confirmingPendingAction" @click="cancelPendingAction">取消</button>
-            <button class="btn-primary" :disabled="confirmingPendingAction" @click="confirmPendingAction">
-              {{ confirmingPendingAction ? '确认中...' : '确认执行' }}
-            </button>
-          </div>
-        </div>
 
         <div v-if="pendingAttachments.length" class="attachment-preview-bar">
           <div v-for="(att, idx) in pendingAttachments" :key="idx" class="att-preview-item">
@@ -914,10 +867,7 @@ function safeParse(str) {
 .ai-page {
   display: flex;
   gap: var(--space-6);
-  min-height: calc(100vh - var(--header-height, 64px));
-  padding: var(--space-6);
-  background: linear-gradient(180deg, var(--bg-page) 0%, #eef4ff 100%);
-  overflow: hidden;
+  max-height: calc(100vh -  200px);
 }
 
 .page-shell {
@@ -1146,7 +1096,7 @@ function safeParse(str) {
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  width: 0;
   overflow: hidden;
 }
 

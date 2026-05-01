@@ -5,6 +5,13 @@
         <h1 class="page-title">甘特图</h1>
         <p class="page-subtitle">可视化项目进度和时间安排</p>
       </div>
+      <t-date-range-picker
+          v-model="selectedRange"
+          clearable
+          separator="至"
+          class="gantt-range-picker"
+          @change="handleRangeChange"
+        />
     </div>
 
     <div v-if="loading" class="gantt-loading">
@@ -16,19 +23,6 @@
     </div>
 
     <div v-else class="gantt-container">
-      <div class="gantt-toolbar">
-        <h2 class="gantt-title">甘特图</h2>
-        <t-date-range-picker
-          v-model="selectedRange"
-          enable-time-picker
-          clearable
-          format="YYYY-MM-DD HH:mm:ss"
-          separator="至"
-          class="gantt-range-picker"
-          @change="handleRangeChange"
-        />
-      </div>
-
       <div class="gantt-grid">
         <div class="gantt-fixed-column">
           <div class="gantt-fixed-header">任务名称</div>
@@ -622,13 +616,13 @@ const monthGroups = computed(() => {
   padding: 24px;
   box-sizing: border-box;
 }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; animation: fadeInUp 0.5s ease; }
+.page-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; animation: fadeInUp 0.5s ease; }
 .header-content { display: flex; flex-direction: column; gap: 4px; }
 .page-title { font-size: 28px; font-weight: 700; color: var(--text-primary); margin: 0; }
 .page-subtitle { font-size: 14px; color: var(--text-secondary); margin: 0; }
 .header-actions { display: flex; gap: 8px; }
 
-.gantt-container { background: var(--bg-container); border-radius: var(--radius-xl); border: 1px solid var(--border-color); animation: fadeInUp 0.5s ease 0.1s backwards; display: flex; flex-direction: column; gap: 16px; padding: 32px; box-sizing: border-box; }
+.gantt-container { background: var(--bg-container); border-radius: var(--radius-xl); border: 1px solid var(--border-color); animation: fadeInUp 0.5s ease 0.1s backwards; display: flex; flex-direction: column; gap: 16px; box-sizing: border-box; }
 .gantt-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .toolbar-title { display: flex; flex-direction: column; gap: 4px; }
 .toolbar-title h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--text-primary); }

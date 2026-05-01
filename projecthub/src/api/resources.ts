@@ -391,7 +391,7 @@ export interface Comic {
   resourcePathId: number;
   folderName: string;
   displayName: string;
-  type: 'manga' | 'comic' | 'novel' | 'picture';
+  type: 'manga' | 'comic' | 'novel' | 'picture' | 'scroll';
   thumbnailBase64?: string;
   chapterCount?: number;
   createdAt: string;

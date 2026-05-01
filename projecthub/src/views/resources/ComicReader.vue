@@ -1,6 +1,6 @@
 <template>
   <div
-    class="comic-reader-page page-shell"
+    class="comic-reader-page"
     ref="pageRef"
     @mousemove="showHeader = true"
     @mouseleave="showHeader = false"
@@ -23,7 +23,14 @@
 
         <div class="header-right">
           <span class="page-info">{{ currentPageDisplay }} / {{ totalPageCount }}</span>
-          <t-button theme="default" variant="text" @click="toggleFullscreen">
+          
+          <t-button theme="default" variant="text" @click="toggleRotation" :title="`当前: ${rotation}度 (点击切换)`">
+            <template #icon>
+              <t-icon name="refresh" />
+            </template>
+          </t-button>
+
+          <t-button theme="default" variant="text" @click="toggleFullscreen" title="全屏">
             <template #icon>
               <t-icon :name="isFullscreen ? 'compress' : 'fullscreen'" />
             </template>
@@ -49,20 +56,24 @@
               :alt="`${page.chapterName} 第${index + 1}页`"
               @error="handleImageError"
               loading="lazy"
+              :style="{ transform: `rotate(${rotation}deg)` }"
+              :class="{ 'is-rotated-vertical': rotation === 90 || rotation === -90 }"
             />
           </div>
         </div>
 
-        <div v-else class="page-container">
+        <div v-else class="page-container1">
           <img
             v-if="currentPageData"
             :src="getPageUrl(currentPageData)"
             :alt="`${currentPageData.chapterName} 第${currentPageData.pageIndex + 1}页`"
             @error="handleImageError"
+            :style="{ transform: `rotate(${rotation}deg)` }"
+            :class="{ 'is-rotated-vertical': rotation === 90 || rotation === -90 }"
           />
 
           <div v-if="allPages.length === 0" class="loading-state">
-            <t-loading size="large" text="加载中..." />
+            <t-loading text="加载中..." />
           </div>
         </div>
       </div>
@@ -86,10 +97,6 @@
           <template #icon><t-icon name="chevron-right" /></template>
         </t-button>
       </div>
-    </div>
-
-    <div v-if="loading" class="loading-overlay">
-      <t-loading size="large" text="加载中..." />
     </div>
   </div>
 </template>
@@ -118,6 +125,7 @@ const loading = ref(false);
 const showHeader = ref(false);
 const viewMode = ref<'scroll' | 'page'>('scroll');
 const isFullscreen = ref(false);
+const rotation = ref<number>(0); // 旋转状态支持 0, 90, -90
 const pageRef = ref<HTMLElement | null>(null);
 const contentRef = ref<HTMLElement | null>(null);
 
@@ -126,7 +134,7 @@ const comic = ref<Comic | null>(null);
 const chapters = ref<any[]>([]);
 const currentPageIndex = ref(0);
 
-// 所有页面（连贯的跨章节页面列表）
+// 所有页面
 const allPages = ref<PageItem[]>([]);
 
 // 计算属性
@@ -141,13 +149,13 @@ const currentPageData = computed(() => {
   return allPages.value[currentPageIndex.value];
 });
 
-// 获取页面URL（通过6789代理）
+// 获取页面URL
 function getPageUrl(page: PageItem): string {
   const proxyUrl = 'http://localhost:6789/files/read';
   return `${proxyUrl}?path=${encodeURIComponent(page.fullPath)}`;
 }
 
-// 构建连贯的页面列表（跨章节）
+// 构建页面列表
 function buildAllPages() {
   const pages: PageItem[] = [];
   
@@ -166,68 +174,49 @@ function buildAllPages() {
   });
   
   allPages.value = pages;
-  console.log('[ComicReader] 构建连贯页面列表:', pages.length, '页');
+}
+
+// 切换旋转状态 (0 -> 90 -> -90 -> 0)
+function toggleRotation() {
+  if (rotation.value === 0) {
+    rotation.value = 90;
+  } else if (rotation.value === 90) {
+    rotation.value = -90;
+  } else {
+    rotation.value = 0;
+  }
+  localStorage.setItem('comic-rotation', String(rotation.value));
 }
 
 // 加载漫画数据
 async function loadComic() {
   const comicId = Number(route.params.id);
-  console.log('[ComicReader] comicId:', comicId);
   
-  if (!comicId) {
-    console.error('[ComicReader] 无效的 comicId');
-    return;
-  }
+  if (!comicId) return;
   
   loading.value = true;
   
   try {
-    // 1. 获取漫画信息
-    console.log('[ComicReader] 调用 api.getComic()');
     const comicResponse = await api.getComic(comicId);
-    console.log('[ComicReader] getComic 响应:', comicResponse);
     comic.value = comicResponse.data;
-    console.log('[ComicReader] 漫画信息:', comic.value);
     
-    // 根据漫画类型决定默认视图
-    viewMode.value = comic.value.type === 'scroll' ? 'scroll' : 'page';
-    console.log('[ComicReader] 视图模式:', viewMode.value);
+    viewMode.value = comic.value!.type === 'scroll' ? 'scroll' : 'page';
     
-    // 2. 获取资源路径
-    console.log('[ComicReader] 调用 api.getResourcePaths()');
-    const pathResponse = await api.getResourcePaths(comic.value.resourcePathId);
-    console.log('[ComicReader] getResourcePaths 响应:', pathResponse);
-    
+    const pathResponse = await api.getResourcePaths(comic.value!.resourcePathId);
     const foundPath = pathResponse.data.items?.find((p: any) => p.type === 'comic' && p.isEnabled);
-    if (!foundPath) {
-      throw new Error('未找到资源路径');
-    }
-    console.log('[ComicReader] 资源路径:', foundPath);
+    if (!foundPath) throw new Error('未找到资源路径');
     
-    // 3. 调用6789扫描
-    console.log('[ComicReader] 调用 api.scanComics()', { resourcePathId: foundPath.id });
     const scanResponse = await api.scanComics(foundPath.id);
-    console.log('[ComicReader] scanComics 响应:', scanResponse);
+    const matchedComic = scanResponse.comics?.find((c: any) => c.name === comic.value!.folderName);
+    if (!matchedComic) throw new Error(`未找到漫画文件夹: ${comic.value!.folderName}`);
     
-    // 4. 用 folderName 匹配当前漫画
-    const matchedComic = scanResponse.comics?.find((c: any) => c.name === comic.value.folderName);
-    if (!matchedComic) {
-      throw new Error(`未找到漫画文件夹: ${comic.value.folderName}`);
-    }
-    console.log('[ComicReader] 匹配的漫画:', matchedComic);
-    
-    // 5. 设置章节列表
     chapters.value = matchedComic.chapters?.map((ch: any, index: number) => ({
       ...ch,
       id: index,
       displayName: ch.name
     })) || [];
-    console.log('[ComicReader] 章节列表:', chapters.value);
     
-    // 6. 构建连贯页面列表
     buildAllPages();
-    
-    // 7. 恢复阅读进度
     restoreReadingProgress();
     
   } catch (error) {
@@ -238,27 +227,24 @@ async function loadComic() {
   }
 }
 
-// 保存阅读进度
+// 保存与恢复进度
 function saveReadingProgress() {
   if (!comic.value) return;
   localStorage.setItem(`comic-progress-${comic.value.id}`, String(currentPageIndex.value));
 }
 
-// 恢复阅读进度
 function restoreReadingProgress() {
   if (!comic.value) return;
   const saved = localStorage.getItem(`comic-progress-${comic.value.id}`);
   if (saved) {
     currentPageIndex.value = parseInt(saved, 10);
-    // 确保不越界
     if (currentPageIndex.value >= allPages.value.length) {
       currentPageIndex.value = 0;
     }
-    console.log('[ComicReader] 恢复阅读进度:', currentPageIndex.value);
   }
 }
 
-// 页漫模式：翻页
+// 翻页逻辑
 function nextPage() {
   if (currentPageIndex.value < allPages.value.length - 1) {
     currentPageIndex.value++;
@@ -273,7 +259,6 @@ function prevPage() {
   }
 }
 
-// 点击内容区域（页漫模式）
 function handleContentClick(e: MouseEvent) {
   if (viewMode.value !== 'page') return;
   
@@ -288,7 +273,6 @@ function handleContentClick(e: MouseEvent) {
   }
 }
 
-// 键盘控制（页漫模式）
 function handleKeydown(e: KeyboardEvent) {
   if (viewMode.value !== 'page') return;
   
@@ -305,66 +289,54 @@ function handleKeydown(e: KeyboardEvent) {
   }
 }
 
-// 图片加载错误
 function handleImageError(e: Event) {
   const img = e.target as HTMLImageElement;
   img.src = '/placeholder.png';
 }
 
-// 返回
 function goBack() {
   router.push('/resources');
 }
 
-// 全屏切换（容器全屏）
 function toggleFullscreen() {
   if (!pageRef.value) return;
   
   if (!document.fullscreenElement) {
     pageRef.value.requestFullscreen().then(() => {
       isFullscreen.value = true;
-    }).catch((err) => {
-      console.error('[ComicReader] 全屏失败:', err);
-    });
+    }).catch((err) => console.error('[ComicReader] 全屏失败:', err));
   } else {
     document.exitFullscreen().then(() => {
       isFullscreen.value = false;
-    }).catch((err) => {
-      console.error('[ComicReader] 退出全屏失败:', err);
-    });
+    }).catch((err) => console.error('[ComicReader] 退出全屏失败:', err));
   }
 }
 
-// 监听全屏状态变化
 function handleFullscreenChange() {
   isFullscreen.value = !!document.fullscreenElement;
 }
 
-// 监听滚动（条漫模式，保存进度）
 function handleScroll() {
   if (viewMode.value !== 'scroll' || !contentRef.value) return;
-  // 可以实现懒加载或滚动保存进度
 }
 
 onMounted(() => {
   loadComic();
   
-  // 添加滚动监听
   if (contentRef.value) {
     contentRef.value.addEventListener('scroll', handleScroll);
   }
   
-  // 添加键盘监听
   window.addEventListener('keydown', handleKeydown);
-  
-  // 添加全屏状态监听
   document.addEventListener('fullscreenchange', handleFullscreenChange);
   
   // 恢复视图偏好
   const savedMode = localStorage.getItem('comic-view-mode');
-  if (savedMode) {
-    viewMode.value = savedMode as 'scroll' | 'page';
-  }
+  if (savedMode) viewMode.value = savedMode as 'scroll' | 'page';
+
+  // 恢复旋转偏好
+  const savedRotation = localStorage.getItem('comic-rotation');
+  if (savedRotation) rotation.value = Number(savedRotation);
 });
 
 onUnmounted(() => {
@@ -382,8 +354,6 @@ watch(viewMode, (newMode) => {
   position: relative;
   width: 100%;
   min-height: calc(100vh - var(--header-height, 64px));
-  background: linear-gradient(180deg, var(--bg-page) 0%, #eef4ff 100%);
-  padding: var(--space-6);
   overflow: hidden;
 }
 
@@ -495,28 +465,47 @@ watch(viewMode, (newMode) => {
   overflow: hidden;
 }
 
+/* 统一加上过渡动画 */
 .page-item img {
   width: 100%;
   display: block;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.page-container {
+/* ---------- 核心调整：页漫模式与旋转样式 ---------- */
+.page-container1 {
   width: 100%;
   height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: var(--space-6);
+  /* 开启容器查询，为旋转后的尺寸计算提供基准 */
+  container-type: size; 
+  overflow: hidden;
 }
 
-.page-container img {
+.page-container1 img {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
   background: white;
+  /* 动画过渡变得更加丝滑 */
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              max-width 0.3s ease, 
+              max-height 0.3s ease;
 }
+
+/* 专门针对页漫模式，90度或-90度时的尺寸约束（防止溢出并撑满） */
+.page-container1 img.is-rotated-vertical {
+  /* 旋转后，宽变高，高变宽，依托容器查询动态反转限制 */
+  max-width: calc(100vh - 150px);
+  max-height: 100vw;
+  /* 现代浏览器直接精准贴合 */
+  max-width: 100cqh;
+  max-height: 100cqw;
+}
+/* ------------------------------------------------ */
 
 .loading-state {
   color: var(--text-secondary);
