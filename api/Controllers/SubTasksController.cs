@@ -42,6 +42,8 @@ public class SubTasksController : ControllerBase
             ParentTaskId = request.ParentTaskId,
             Title = request.Title,
             Description = request.Description,
+            Category = request.Category ?? "dev",
+            EstimatedHours = request.EstimatedHours ?? 0,
             IsCompleted = false,
             SortOrder = request.SortOrder,
             CreatedAt = DateTime.Now,
@@ -70,12 +72,48 @@ public class SubTasksController : ControllerBase
             subTask.Title = request.Title;
         if (request.Description != null)
             subTask.Description = request.Description;
+        if (request.Category != null)
+            subTask.Category = request.Category;
+        if (request.EstimatedHours.HasValue)
+            subTask.EstimatedHours = request.EstimatedHours.Value;
         if (request.IsCompleted.HasValue)
             subTask.IsCompleted = request.IsCompleted.Value;
         if (request.SortOrder.HasValue)
             subTask.SortOrder = request.SortOrder.Value;
 
         subTask.UpdatedAt = DateTime.Now;
+
+        // 检查并更新父任务状态
+        var parentTask = await _context.Tasks.FindAsync(subTask.ParentTaskId);
+        if (parentTask != null)
+        {
+            // 获取该父任务的所有子任务
+            var allSubTasks = await _context.SubTasks
+                .Where(s => s.ParentTaskId == subTask.ParentTaskId)
+                .ToListAsync();
+
+            // 计算新的进度
+            var totalHours = allSubTasks.Sum(s => s.EstimatedHours);
+            var completedHours = allSubTasks.Where(s => s.IsCompleted).Sum(s => s.EstimatedHours);
+            parentTask.Progress = totalHours > 0 ? (int)Math.Round(completedHours * 100m / totalHours) : 0;
+
+            // 判断是否所有子任务都已完成
+            var allCompleted = allSubTasks.All(s => s.IsCompleted);
+            if (allCompleted && parentTask.Status != "completed")
+            {
+                // 所有子任务都完成，父任务改为完成
+                parentTask.Status = "completed";
+                parentTask.ActualEndDate = DateTime.Now;
+            }
+            else if (!allCompleted && parentTask.Status == "completed")
+            {
+                // 有子任务未完成，父任务改为进行中
+                parentTask.Status = "in_progress";
+                parentTask.ActualEndDate = null;
+            }
+
+            parentTask.UpdatedAt = DateTime.Now;
+        }
 
         await _context.SaveChangesAsync();
 
@@ -96,6 +134,38 @@ public class SubTasksController : ControllerBase
 
         subTask.IsCompleted = !subTask.IsCompleted;
         subTask.UpdatedAt = DateTime.Now;
+
+        // 检查并更新父任务状态
+        var parentTask = await _context.Tasks.FindAsync(subTask.ParentTaskId);
+        if (parentTask != null)
+        {
+            // 获取该父任务的所有子任务
+            var allSubTasks = await _context.SubTasks
+                .Where(s => s.ParentTaskId == subTask.ParentTaskId)
+                .ToListAsync();
+
+            // 计算新的进度
+            var totalHours = allSubTasks.Sum(s => s.EstimatedHours);
+            var completedHours = allSubTasks.Where(s => s.IsCompleted).Sum(s => s.EstimatedHours);
+            parentTask.Progress = totalHours > 0 ? (int)Math.Round(completedHours * 100m / totalHours) : 0;
+
+            // 判断是否所有子任务都已完成
+            var allCompleted = allSubTasks.All(s => s.IsCompleted);
+            if (allCompleted && parentTask.Status != "completed")
+            {
+                // 所有子任务都完成，父任务改为完成
+                parentTask.Status = "completed";
+                parentTask.ActualEndDate = DateTime.Now;
+            }
+            else if (!allCompleted && parentTask.Status == "completed")
+            {
+                // 有子任务未完成，父任务改为进行中
+                parentTask.Status = "in_progress";
+                parentTask.ActualEndDate = null;
+            }
+
+            parentTask.UpdatedAt = DateTime.Now;
+        }
 
         await _context.SaveChangesAsync();
 
@@ -142,6 +212,8 @@ public class CreateSubTaskRequest
     public int ParentTaskId { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
+    public string? Category { get; set; }
+    public decimal? EstimatedHours { get; set; }
     public int SortOrder { get; set; }
 }
 
@@ -149,6 +221,8 @@ public class UpdateSubTaskRequest
 {
     public string? Title { get; set; }
     public string? Description { get; set; }
+    public string? Category { get; set; }
+    public decimal? EstimatedHours { get; set; }
     public bool? IsCompleted { get; set; }
     public int? SortOrder { get; set; }
 }

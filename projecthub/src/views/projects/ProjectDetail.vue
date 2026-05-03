@@ -47,11 +47,7 @@
     </div>
 
     <template v-else>
-      <div v-if="loading" class="loading-container">
-        <t-loading size="large" text="加载中..." />
-      </div>
-
-      <div v-else class="project-header" :style="{ background: project.gradient }">
+      <div class="project-header" :style="{ background: project.gradient }">
         <div class="header-content">
           <div class="project-info">
             <div class="project-icon">{{ project.name?.charAt(0) || 'P' }}</div>
@@ -79,7 +75,7 @@
         </div>
       </div>
 
-      <div v-if="!loading" class="project-stats">
+      <div class="project-stats">
         <div class="stat-item">
           <span class="stat-value">{{ project.progress || 0 }}%</span>
           <span class="stat-label">完成度</span>
@@ -102,7 +98,7 @@
       </div>
 
       <div class="tabs-container">
-        <t-tabs v-if="!loading" v-model="activeTab">
+        <t-tabs v-model="activeTab">
         <t-tab-panel value="tasks" label="任务列表">
           <div class="tasks-content">
             <div class="tasks-filters">
@@ -135,7 +131,6 @@
                       <t-icon :name="expandedTasks.has(task.id) ? 'caret-down' : 'caret-right'" size="16px" />
                     </div>
 
-                    <t-checkbox :checked="task.status === 'completed'" @change="() => toggleTaskStatus(task)" />
                     <span :class="{ completed: task.status === 'completed' }">{{ task.title }}</span>
 
                     <span v-if="subTasksMap[task.id]?.length > 0" class="subtask-count">
@@ -143,17 +138,16 @@
                     </span>
                   </div>
                   <div class="task-meta">
-                    <t-tag :theme="getCategoryType(task.category)" variant="light" size="small">{{ task.categoryText || task.category }}</t-tag>
                     <t-tag :theme="getPriorityType(task.priority)" variant="light" size="small">{{ task.priorityText || task.priority }}</t-tag>
                     <span v-if="isTaskOverdue(task)" class="overdue-text">逾期</span>
                     <t-tag v-else :theme="getStatusType(task.status)" variant="light" size="small">{{ task.statusText || task.status }}</t-tag>
                     <div class="progress-cell">
-                      <t-slider v-model="task.progress" :step="10" :show-tooltip="true" :disabled="task.status === 'completed'" :style="{ width: '100px' }" @change="(val) => handleProgressChange(task, val)" />
-                      <span class="progress-text">{{ task.progress }}%</span>
+                      <t-slider :model-value="getTaskProgress(task)" :step="1" :show-tooltip="true" :style="{ width: '100px' }" />
+                      <span class="progress-text">{{ getTaskProgress(task) }}%</span>
                     </div>
-                    <span class="hours-text">{{ task.estimatedHours ? task.estimatedHours + 'h' : '-' }}</span>
+                    <span class="hours-text">{{ task.totalEstimatedHours ?? task.estimatedHours }}h</span>
                     <span class="date-text">{{ task.planStartDate ? dayjs(task.planStartDate).format('MM/DD') : '-' }}</span>
-                    <span class="date-text" :class="{ overdue: isOverdue(task.planEndDate) }">{{ task.planEndDate ? dayjs(task.planEndDate).format('MM/DD') : '-' }}</span>
+                    <span class="date-text">{{ task.planEndDate ? dayjs(task.planEndDate).format('MM/DD') : '-' }}</span>
                     <t-button variant="text" size="small" @click.stop="editTask(task)"><EditIcon /></t-button>
                     <t-button variant="text" size="small" @click.stop="deleteTask(task.id)"><DeleteIcon /></t-button>
                   </div>
@@ -169,14 +163,14 @@
                       :class="{ completed: subTask.isCompleted }"
                       @contextmenu.prevent.stop="showContextMenu($event, { ...task, subTask })"
                     >
-                      <t-checkbox :checked="subTask.isCompleted" @change="() => toggleSubTaskComplete(subTask)" />
+                      <t-checkbox :checked="subTask.isCompleted" @change="() => toggleSubTaskComplete(subTask, task.id)" />
 
                       <t-input
                         v-if="inlineEditTask === subTask.id"
                         :ref="(el) => setInputRef(el, subTask.id)"
                         :value="inlineEditValue"
                         size="small"
-                        style="width: 300px"
+                        style="width: 200px"
                         @update:value="(val) => inlineEditValue = val"
                         @blur="finishInlineEdit(subTask)"
                         @enter="finishInlineEdit(subTask)"
@@ -187,6 +181,35 @@
                         class="subtask-title"
                         @dblclick.stop="startInlineEdit(subTask)"
                       >{{ subTask.title }}</span>
+
+                      <t-dropdown>
+                        <t-tag
+                          :theme="getCategoryTheme(subTask.category)"
+                          variant="light"
+                          size="small"
+                          style="cursor: pointer"
+                        >{{ getCategoryLabel(subTask.category) }}</t-tag>
+                        <t-dropdown-menu>
+                          <t-dropdown-item
+                            v-for="cat in categories"
+                            :key="cat.value"
+                            @click="selectCategory(subTask, cat.value)"
+                          >{{ cat.label }}</t-dropdown-item>
+                        </t-dropdown-menu>
+                      </t-dropdown>
+
+                      <t-input-number
+                        v-model="subTask.estimatedHours"
+                        :min="0"
+                        :step="0.5"
+                        size="small"
+                        style="width: 100px"
+                        @change="() => updateSubTaskHours(subTask)"
+                      />
+                      <span class="subtask-hours">h</span>
+
+                      <t-button variant="text" size="small" @click.stop="editSubTask(subTask)"><EditIcon /></t-button>
+                      <t-button variant="text" size="small" @click.stop="deleteSubTask(task.id, subTask.id)"><DeleteIcon /></t-button>
                     </div>
 
                     <div class="subtask-add" @click.stop="addSubTask(task.id)">
@@ -224,25 +247,12 @@
         <t-form-item label="任务描述" name="description">
           <t-textarea v-model="taskForm.description" placeholder="请输入任务描述" :rows="2" />
         </t-form-item>
-        <t-form-item label="任务分类" name="category">
-          <t-select v-model="taskForm.category" placeholder="请选择分类">
-            <t-option value="dev" label="开发" />
-            <t-option value="meeting" label="会议" />
-            <t-option value="doc" label="文档" />
-            <t-option value="design" label="设计" />
-            <t-option value="debug" label="调试" />
-            <t-option value="bug" label="BUG" />
-          </t-select>
-        </t-form-item>
         <t-form-item label="优先级" name="priority">
           <t-select v-model="taskForm.priority" placeholder="请选择优先级">
             <t-option value="high" label="高" />
             <t-option value="medium" label="中" />
             <t-option value="low" label="低" />
           </t-select>
-        </t-form-item>
-        <t-form-item label="预估工时" name="estimatedHours">
-          <t-input-number v-model="taskForm.estimatedHours" :min="0" :step="0.5" placeholder="小时" style="width: 150px" />
         </t-form-item>
         <t-form-item label="开始日期" name="planStartDate">
           <t-date-picker v-model="taskForm.planStartDate" />
@@ -290,25 +300,12 @@
         <t-form-item label="任务描述" name="description">
           <t-textarea v-model="taskForm.description" placeholder="请输入任务描述" :rows="2" />
         </t-form-item>
-        <t-form-item label="任务分类" name="category">
-          <t-select v-model="taskForm.category" placeholder="请选择分类">
-            <t-option value="dev" label="开发" />
-            <t-option value="meeting" label="会议" />
-            <t-option value="doc" label="文档" />
-            <t-option value="design" label="设计" />
-            <t-option value="debug" label="调试" />
-            <t-option value="bug" label="BUG" />
-          </t-select>
-        </t-form-item>
         <t-form-item label="优先级" name="priority">
           <t-select v-model="taskForm.priority" placeholder="请选择优先级">
             <t-option value="high" label="高" />
             <t-option value="medium" label="中" />
             <t-option value="low" label="低" />
           </t-select>
-        </t-form-item>
-        <t-form-item label="预估工时" name="estimatedHours">
-          <t-input-number v-model="taskForm.estimatedHours" :min="0" :step="0.5" placeholder="小时" style="width: 150px" />
         </t-form-item>
         <t-form-item label="状态" name="status">
           <t-select v-model="taskForm.status" placeholder="请选择状态">
@@ -361,11 +358,9 @@ const taskFormRef2 = ref(null)
 const taskForm = ref({
   title: '',
   description: '',
-  category: 'dev',
   priority: 'medium',
   status: 'pending',
   progress: 0,
-  estimatedHours: 0,
   planStartDate: null,
   planEndDate: null
 })
@@ -414,6 +409,28 @@ const contextMenuVisible = ref(false)
 const contextMenuTask = ref(null)
 const contextMenuStyle = ref({})
 
+// 子任务类型配置
+const categories = [
+  { value: 'dev', label: '开发', theme: 'primary' },
+  { value: 'meeting', label: '会议', theme: 'warning' },
+  { value: 'doc', label: '文档', theme: 'success' },
+  { value: 'design', label: '设计', theme: 'primary' },
+  { value: 'debug', label: '调试', theme: 'warning' },
+  { value: 'bug', label: 'BUG', theme: 'danger' }
+]
+
+// 获取任务类型标签名
+const getCategoryLabel = (category) => {
+  const cat = categories.find(c => c.value === category)
+  return cat ? cat.label : category
+}
+
+// 获取任务类型主题
+const getCategoryTheme = (category) => {
+  const cat = categories.find(c => c.value === category)
+  return cat ? cat.theme : 'default'
+}
+
 // 行内编辑状态
 const inlineEditTask = ref(null) // 正在行内编辑的子任务ID
 const inlineEditValue = ref('')
@@ -457,13 +474,14 @@ const addSubTask = async (taskId) => {
     const newSubTask = await subTaskService.create({
       ParentTaskId: taskId,
       Title: '新子任务',
+      Category: 'dev',
+      EstimatedHours: 0,
       SortOrder: (subTasksMap.value[taskId]?.length || 0) + 1
     })
     if (!subTasksMap.value[taskId]) {
       subTasksMap.value[taskId] = []
     }
     subTasksMap.value[taskId].push(newSubTask)
-    // 开始行内编辑
     startInlineEdit(newSubTask)
   } catch (error) {
     console.error('添加子任务失败:', error)
@@ -471,8 +489,53 @@ const addSubTask = async (taskId) => {
   }
 }
 
+// 获取子任务预估工时总和
+const getTotalEstimatedHours = (taskId) => {
+  const subTasks = subTasksMap.value[taskId] || []
+  return subTasks.reduce((sum, st) => sum + (st.estimatedHours || 0), 0)
+}
+
+// 计算任务进度：优先使用后端返回的progress（不展开时），有子任务数据时本地计算
+const getTaskProgress = (task) => {
+  // 如果任务没有子任务数据或没有展开，使用后端返回的progress
+  const subTasks = subTasksMap.value[task.id]
+  if (!subTasks || subTasks.length === 0) {
+    return task.progress || 0
+  }
+  // 有子任务数据时，本地计算
+  const totalHours = subTasks.reduce((sum, st) => sum + (st.estimatedHours || 0), 0)
+  if (totalHours === 0) return 0
+  const completedHours = subTasks.filter(st => st.isCompleted).reduce((sum, st) => sum + (st.estimatedHours || 0), 0)
+  return Math.round((completedHours / totalHours) * 100)
+}
+
+// 选择子任务分类
+const selectCategory = async (subTask, category) => {
+  const originalCategory = subTask.category
+  subTask.category = category
+  try {
+    await subTaskService.update(subTask.id, { Category: category })
+  } catch (error) {
+    console.error('更新子任务分类失败:', error)
+    subTask.category = originalCategory // 失败则回滚
+    MessagePlugin.error('更新失败')
+  }
+}
+
+// 更新子任务预估工时
+const updateSubTaskHours = async (subTask) => {
+  try {
+    await subTaskService.update(subTask.id, { EstimatedHours: subTask.estimatedHours })
+    // 重新加载任务列表，获取更新后的父任务状态和进度
+    await loadProject()
+  } catch (error) {
+    console.error('更新子任务工时失败:', error)
+    MessagePlugin.error('更新失败')
+  }
+}
+
 // 【修复：乐观 UI 更新，保证复选框瞬间响应】
-const toggleSubTaskComplete = async (subTask) => {
+const toggleSubTaskComplete = async (subTask, taskId) => {
   const originalState = subTask.isCompleted
   subTask.isCompleted = !originalState
   try {
@@ -480,11 +543,23 @@ const toggleSubTaskComplete = async (subTask) => {
     if (result && typeof result.isCompleted === 'boolean') {
       subTask.isCompleted = result.isCompleted
     }
+    // 重新加载任务列表，获取更新后的父任务状态和进度
+    await loadProject()
   } catch (error) {
     console.error('切换状态失败:', error)
     subTask.isCompleted = originalState // 失败则回滚
     MessagePlugin.error('操作失败')
   }
+}
+
+// 从本地子任务数据计算进度（用于切换子任务状态后）
+const getTaskProgressFromSubTasks = (taskId) => {
+  const subTasks = subTasksMap.value[taskId] || []
+  if (subTasks.length === 0) return 0
+  const totalHours = subTasks.reduce((sum, st) => sum + (st.estimatedHours || 0), 0)
+  if (totalHours === 0) return 0
+  const completedHours = subTasks.filter(st => st.isCompleted).reduce((sum, st) => sum + (st.estimatedHours || 0), 0)
+  return Math.round((completedHours / totalHours) * 100)
 }
 
 // 开始行内编辑
@@ -608,14 +683,23 @@ const filteredTasks = computed(() => {
       return false
     }
     return true
+  }).sort((a, b) => {
+    // 按开始日期升序排序
+    const aDate = a.planStartDate ? new Date(a.planStartDate).getTime() : 0
+    const bDate = b.planStartDate ? new Date(b.planStartDate).getTime() : 0
+    return aDate - bDate
   })
 })
 
 const stats = computed(() => {
   const total = tasks.value.length
   const completed = tasks.value.filter(t => t.status === 'completed').length
-  const totalHours = tasks.value.reduce((sum, t) => sum + (t.estimatedHours || 0), 0)
-  const weightedProgress = tasks.value.reduce((sum, t) => sum + ((t.estimatedHours || 0) * (t.progress || 0) / 100), 0)
+  // 使用后端返回的子任务预估工时总和计算项目进度
+  const totalHours = tasks.value.reduce((sum, t) => sum + (t.totalEstimatedHours ?? t.estimatedHours ?? 0), 0)
+  const weightedProgress = tasks.value.reduce((sum, t) => {
+    const taskHours = t.totalEstimatedHours ?? t.estimatedHours ?? 0
+    return sum + (taskHours * (t.progress || 0) / 100)
+  }, 0)
   const progress = totalHours > 0 ? Math.round((weightedProgress / totalHours) * 100) : 0
   // 使用 tasks 中最早截止日期计算剩余天数
   const uncompletedTasks = tasks.value.filter(t => t.status !== 'completed' && t.planEndDate)
@@ -649,8 +733,7 @@ const loadProject = async () => {
     tasks.value = (tasksData || []).map(t => ({
       ...t,
       priorityText: { high: '高', medium: '中', low: '低' }[t.priority] || t.priority,
-      statusText: { pending: '待开始', in_progress: '进行中', completed: '已完成' }[t.status] || t.status,
-      categoryText: { dev: '开发', meeting: '会议', doc: '文档', design: '设计', debug: '调试', bug: 'BUG' }[t.category] || t.category
+      statusText: { pending: '待开始', in_progress: '进行中', completed: '已完成' }[t.status] || t.status
     }))
     
     // 计算项目进度
@@ -765,17 +848,15 @@ const handleAddTask = async () => {
     await projectService.createTask(route.params.id, {
       title: taskForm.value.title,
       description: taskForm.value.description,
-      category: taskForm.value.category,
       priority: taskForm.value.priority,
       status: 'pending',
       progress: 0,
-      estimatedHours: taskForm.value.estimatedHours,
       planStartDate: taskForm.value.planStartDate ? dayjs(taskForm.value.planStartDate).format('YYYY-MM-DD') : null,
       planEndDate: taskForm.value.planEndDate ? dayjs(taskForm.value.planEndDate).format('YYYY-MM-DD') : null
     })
     MessagePlugin.success('任务添加成功')
     showAddTaskDialog.value = false
-    taskForm.value = { title: '', description: '', category: 'dev', priority: 'medium', status: 'pending', progress: 0, estimatedHours: 0, planStartDate: null, planEndDate: null }
+    taskForm.value = { title: '', description: '', priority: 'medium', status: 'pending', progress: 0, planStartDate: null, planEndDate: null }
     await loadProject()
   } catch (error) {
     console.error('添加任务失败:', error)
@@ -791,11 +872,9 @@ const editTask = (task) => {
   taskForm.value = {
     title: task.title,
     description: task.description,
-    category: task.category,
     priority: task.priority,
     status: task.status,
     progress: task.progress,
-    estimatedHours: task.estimatedHours || 0,
     planStartDate: task.planStartDate ? dayjs(task.planStartDate).format('YYYY-MM-DD') : null,
     planEndDate: task.planEndDate ? dayjs(task.planEndDate).format('YYYY-MM-DD') : null
   }
@@ -814,11 +893,9 @@ const handleUpdateTask = async () => {
     await projectService.updateTask(editingTaskId.value, {
       title: taskForm.value.title,
       description: taskForm.value.description,
-      category: taskForm.value.category,
       priority: taskForm.value.priority,
       status: taskForm.value.status,
       progress: taskForm.value.progress,
-      estimatedHours: taskForm.value.estimatedHours,
       planStartDate: taskForm.value.planStartDate ? dayjs(taskForm.value.planStartDate).format('YYYY-MM-DD') : null,
       planEndDate: taskForm.value.planEndDate ? dayjs(taskForm.value.planEndDate).format('YYYY-MM-DD') : null
     })
@@ -1116,10 +1193,17 @@ onMounted(loadProject)
 .subtask-title {
   cursor: pointer;
   flex: 1;
+  min-width: 0;
 }
 
 .subtask-title:hover {
   color: var(--text-primary);
+}
+
+.subtask-hours {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-right: 8px;
 }
 
 /* 添加子任务 */

@@ -48,10 +48,16 @@ public class ProjectsController : ControllerBase
                 p.CompletedAt,
                 TaskCount = p.Tasks.Count,
                 CompletedTaskCount = p.Tasks.Count(t => t.Status == "completed"),
-                // 项目进度 = 所有任务(预估工时 × 进度) 的总和 / 所有任务的预估工时总和
-                // 修复：确保预估工时总和大于0，避免除零错误
+                // 项目进度 = 所有任务(子任务预估工时总和 × 进度) 的总和 / 所有任务的子任务预估工时总和
                 Progress = p.Tasks.Any()
-                    ? (int)Math.Round(p.Tasks.Sum(t => t.EstimatedHours * t.Progress / 100m) / Math.Max(p.Tasks.Sum(t => t.EstimatedHours), 1) * 100)
+                    ? (int)Math.Round(
+                        p.Tasks.Sum(t => 
+                            (_context.SubTasks.Where(s => s.ParentTaskId == t.Id).Sum(s => s.EstimatedHours) * t.Progress / 100m)
+                        ) / Math.Max(
+                            p.Tasks.Sum(t => _context.SubTasks.Where(s => s.ParentTaskId == t.Id).Sum(s => s.EstimatedHours)), 
+                            1
+                        ) * 100
+                    )
                     : 0,
                 // 项目截止日期 = 所有任务中最晚的计划完成时间
                 MaxPlanEndDate = p.Tasks.Any(t => t.PlanEndDate.HasValue) 
@@ -170,7 +176,21 @@ public class ProjectsController : ControllerBase
         var tasks = await _context.Tasks
             .Where(t => t.ProjectId == id && t.Status != "archived")
             .OrderByDescending(t => t.UpdatedAt)
-            .Select(t => new
+            .ToListAsync();
+
+        // 获取所有子任务用于计算进度
+        var taskIds = tasks.Select(t => t.Id).ToList();
+        var allSubTasks = await _context.SubTasks
+            .Where(s => taskIds.Contains(s.ParentTaskId))
+            .ToListAsync();
+
+        var result = tasks.Select(t => {
+            var subTasks = allSubTasks.Where(s => s.ParentTaskId == t.Id).ToList();
+            var totalHours = subTasks.Sum(s => s.EstimatedHours);
+            var completedHours = subTasks.Where(s => s.IsCompleted).Sum(s => s.EstimatedHours);
+            var progress = totalHours > 0 ? (int)Math.Round(completedHours * 100m / totalHours) : 0;
+
+            return new
             {
                 t.Id,
                 t.Title,
@@ -178,18 +198,20 @@ public class ProjectsController : ControllerBase
                 t.Category,
                 t.Priority,
                 t.Status,
-                t.Progress,
+                Progress = progress,
                 t.EstimatedHours,
                 t.PlanStartDate,
                 t.PlanEndDate,
                 t.ActualStartDate,
                 t.ActualEndDate,
                 t.CreatedAt,
-                t.UpdatedAt
-            })
-            .ToListAsync();
+                t.UpdatedAt,
+                // 计算子任务预估工时总和
+                TotalEstimatedHours = totalHours
+            };
+        }).ToList();
 
-        return Ok(tasks);
+        return Ok(result);
     }
 
     /// <summary>创建项目任务</summary>

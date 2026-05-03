@@ -34,24 +34,39 @@ public class TasksController : ControllerBase
             .OrderByDescending(t => t.UpdatedAt)
             .ToListAsync();
 
+        // 获取所有子任务用于计算进度
+        var taskIds = tasks.Select(t => t.Id).ToList();
+        var allSubTasks = await _context.SubTasks
+            .Where(s => taskIds.Contains(s.ParentTaskId))
+            .ToListAsync();
+
         // 转换为前端需要的格式
-        var result = tasks.Select(t => new {
-            id = t.Id,
-            title = t.Title,
-            description = t.Description,
-            status = t.Status,
-            priority = t.Priority,
-            progress = t.Progress,
-            projectId = t.ProjectId,
-            projectName = t.Project?.Name,
-            projectType = t.Project?.Type,
-            categoryName = t.Category,
-            categoryColor = t.Category,
-            dueDate = t.PlanEndDate,
-            startDate = t.PlanStartDate,
-            estimatedHours = t.EstimatedHours,
-            createdAt = t.CreatedAt,
-            updatedAt = t.UpdatedAt
+        var result = tasks.Select(t => {
+            var subTasks = allSubTasks.Where(s => s.ParentTaskId == t.Id).ToList();
+            var totalHours = subTasks.Sum(s => s.EstimatedHours);
+            var completedHours = subTasks.Where(s => s.IsCompleted).Sum(s => s.EstimatedHours);
+            var progress = totalHours > 0 ? (int)Math.Round(completedHours * 100m / totalHours) : 0;
+
+            return new {
+                id = t.Id,
+                title = t.Title,
+                description = t.Description,
+                status = t.Status,
+                priority = t.Priority,
+                progress = progress,
+                projectId = t.ProjectId,
+                projectName = t.Project?.Name,
+                projectType = t.Project?.Type,
+                categoryName = t.Category,
+                categoryColor = t.Category,
+                dueDate = t.PlanEndDate,
+                startDate = t.PlanStartDate,
+                estimatedHours = t.EstimatedHours,
+                // 计算子任务预估工时总和
+                totalEstimatedHours = totalHours,
+                createdAt = t.CreatedAt,
+                updatedAt = t.UpdatedAt
+            };
         });
 
         return Ok(result);

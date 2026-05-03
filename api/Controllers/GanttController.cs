@@ -35,41 +35,41 @@ public class GanttController : ControllerBase
                 t.PlanStartDate == null && t.PlanEndDate == null)
             .OrderBy(t => t.ProjectId)
             .ThenBy(t => t.SortOrder)
-            .Select(t => new
+            .ToListAsync();
+
+        // 获取所有相关子任务
+        var taskIds = tasks.Select(t => t.Id).ToList();
+        var subTasks = await _context.SubTasks
+            .Where(s => taskIds.Contains(s.ParentTaskId))
+            .ToListAsync();
+
+        // 构建甘特图数据，日期转为字符串避免时区问题
+        var ganttItems = tasks.Select(t => 
+        {
+            // 计算该任务的子任务进度
+            var taskSubTasks = subTasks.Where(s => s.ParentTaskId == t.Id).ToList();
+            var totalHours = taskSubTasks.Sum(s => s.EstimatedHours);
+            var completedHours = taskSubTasks.Where(s => s.IsCompleted).Sum(s => s.EstimatedHours);
+            var progress = totalHours > 0 ? (int)Math.Round(completedHours * 100m / totalHours) : 0;
+
+            return new
             {
                 t.Id,
                 t.Title,
                 t.ProjectId,
                 ProjectName = t.Project != null ? t.Project.Name : "",
                 ProjectColor = t.Project != null ? (t.Project.Type == "work" ? "#4A90D9" : "#67CBAB") : "#999",
-                t.PlanStartDate,
-                t.PlanEndDate,
+                planStartDate = (t.PlanStartDate ?? DateTime.Today).ToString("yyyy-MM-dd"),
+                planEndDate = (t.PlanEndDate ?? (t.PlanStartDate?.AddDays(1) ?? DateTime.Today.AddDays(1))).ToString("yyyy-MM-dd"),
+                Duration = t.PlanStartDate.HasValue && t.PlanEndDate.HasValue
+                    ? (int)(t.PlanEndDate.Value - t.PlanStartDate.Value).TotalDays + 1
+                    : 1,
                 t.Status,
                 t.Priority,
                 t.Category,
-                t.Progress,
-                t.EstimatedHours
-            })
-            .ToListAsync();
-
-        // 构建甘特图数据，日期转为字符串避免时区问题
-        var ganttItems = tasks.Select(t => new
-        {
-            t.Id,
-            t.Title,
-            t.ProjectId,
-            t.ProjectName,
-            t.ProjectColor,
-            planStartDate = (t.PlanStartDate ?? DateTime.Today).ToString("yyyy-MM-dd"),
-            planEndDate = (t.PlanEndDate ?? (t.PlanStartDate?.AddDays(1) ?? DateTime.Today.AddDays(1))).ToString("yyyy-MM-dd"),
-            Duration = t.PlanStartDate.HasValue && t.PlanEndDate.HasValue
-                ? (int)(t.PlanEndDate.Value - t.PlanStartDate.Value).TotalDays + 1
-                : 1,
-            t.Status,
-            t.Priority,
-            t.Category,
-            t.Progress,
-            t.EstimatedHours
+                Progress = progress,
+                TotalEstimatedHours = totalHours
+            };
         }).ToList();
 
         return Ok(new

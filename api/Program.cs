@@ -390,6 +390,8 @@ using (var scope = app.Services.CreateScope())
                     ParentTaskId INT NOT NULL,
                     Title VARCHAR(200) NOT NULL,
                     Description VARCHAR(1000) NULL,
+                    Category VARCHAR(50) NOT NULL DEFAULT 'dev',
+                    EstimatedHours DECIMAL(65,30) NOT NULL DEFAULT 0,
                     IsCompleted TINYINT(1) NOT NULL DEFAULT 0,
                     SortOrder INT NOT NULL DEFAULT 0,
                     CreatedAt DATETIME(6) NOT NULL,
@@ -398,6 +400,21 @@ using (var scope = app.Services.CreateScope())
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
             command.ExecuteNonQuery();
             logger.LogInformation("✓ SubTasks 表已创建");
+        }
+        else
+        {
+            if (!ColumnExists("SubTasks", "Category"))
+            {
+                command.CommandText = "ALTER TABLE SubTasks ADD COLUMN Category VARCHAR(50) NOT NULL DEFAULT 'dev'";
+                command.ExecuteNonQuery();
+                logger.LogInformation("✓ SubTasks.Category 列已添加");
+            }
+            if (!ColumnExists("SubTasks", "EstimatedHours"))
+            {
+                command.CommandText = "ALTER TABLE SubTasks ADD COLUMN EstimatedHours DECIMAL(65,30) NOT NULL DEFAULT 0";
+                command.ExecuteNonQuery();
+                logger.LogInformation("✓ SubTasks.EstimatedHours 列已添加");
+            }
         }
         
         // 16. 创建 Conversations 表（如果不存在）

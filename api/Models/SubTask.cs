@@ -35,14 +35,25 @@ public class SubTask
     public bool IsCompleted { get; set; }
 
     /// <summary>
-    /// 排序序号
-    /// </summary>
-    public int SortOrder { get; set; }
+/// 排序序号
+/// </summary>
+public int SortOrder { get; set; }
 
-    /// <summary>
-    /// 创建时间
-    /// </summary>
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
+/// <summary>
+/// 任务分类: dev-开发, meeting-会议, doc-文档, design-设计, debug-调试, bug-BUG
+/// </summary>
+[MaxLength(50)]
+public string Category { get; set; } = "dev";
+
+/// <summary>
+/// 预估工时（小时）
+/// </summary>
+public decimal EstimatedHours { get; set; }
+
+/// <summary>
+/// 创建时间
+/// </summary>
+public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     /// <summary>
     /// 更新时间

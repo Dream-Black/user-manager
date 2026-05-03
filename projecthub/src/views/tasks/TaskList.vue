@@ -252,7 +252,7 @@
           </template>
 
           <template #estimatedHours="{ row }">
-            {{ row.estimatedHours ? row.estimatedHours + 'h' : '-' }}
+            {{ row.totalEstimatedHours ?? row.estimatedHours ? (row.totalEstimatedHours ?? row.estimatedHours) + 'h' : '-' }}
           </template>
 
           <template #startDate="{ row }">

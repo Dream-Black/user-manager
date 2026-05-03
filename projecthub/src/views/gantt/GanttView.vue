@@ -85,6 +85,7 @@
                       :class="{
                         completed: task.status === 'completed',
                         overdue: isOverdue(task),
+
                         dragging: draggingTask?.id === task.id && dragType === 'move',
                         'resizing-left': draggingTask?.id === task.id && dragType === 'left',
                         'resizing-right': draggingTask?.id === task.id && dragType === 'right'
@@ -376,7 +377,7 @@ const normalizeTask = (task) => ({
   endDate: task.planEndDate,
   status: task.status,
   progress: task.progress || 0,
-  estimatedHours: task.estimatedHours || 0,
+  estimatedHours: task.totalEstimatedHours || task.estimatedHours || 0,
 })
 
 const recalculateProjectRange = (project) => {
