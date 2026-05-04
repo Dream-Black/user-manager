@@ -233,7 +233,29 @@
         "usedAt": 1777923045227,
         "industryId": "02-Engineering"
       }
+    ],
+    "d03f1933f3c740f0b464af113ff73acd": [
+      {
+        "expertId": "UiDesigner",
+        "name": "像素君",
+        "profession": "UI设计师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/01-Design/UiDesigner/UiDesigner.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/01-Design/UiDesigner/UiDesigner_zh.md",
+        "usedAt": 1777924511599,
+        "industryId": "01-Design"
+      }
+    ],
+    "2f2606a9a6884458b13c7c94705e8b81": [
+      {
+        "expertId": "XrInterfaceArchitect",
+        "name": "空间界",
+        "profession": "XR界面架构师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/10-SpatialComputing/XrInterfaceArchitect/XrInterfaceArchitect.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/10-SpatialComputing/XrInterfaceArchitect/XrInterfaceArchitect_zh.md",
+        "usedAt": 1777925332507,
+        "industryId": "all"
+      }
     ]
   },
-  "lastUpdated": 1777924283820
+  "lastUpdated": 1777925490302
 }
