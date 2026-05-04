@@ -429,18 +429,8 @@ async function switchConversation(id) {
   currentConvId.value = id
   try {
     const msgs = await aiService.getConversationMessages(id)
-    console.log('[AI] switchConversation loaded', { conversationId: id, count: msgs?.length || 0, raw: msgs })
     messages.value = (msgs || []).map((m, i) => {
       const draft = m.role === 'assistant' ? extractDraftMessage(m) : null
-      console.log('[AI] message mapped', {
-        id: m.id,
-        role: m.role,
-        hasAttachments: !!m.attachments,
-        hasFilesJson: !!m.filesJson,
-        hasToolCalls: !!m.toolCalls,
-        hasDraft: !!draft,
-        draft
-      })
       return {
         ...m,
         _id: `${m.id}_${i}`,
@@ -555,15 +545,8 @@ async function sendMessage() {
 
   pendingAttachments.value = []
 
-  await nextTick()
-  // 滚动到目标消息顶部
-  const el = messagesContainer.value
-  if (el && targetMsgId) {
-    const targetEl = el.querySelector('[data-msg-id="' + targetMsgId + '"]')
-    if (targetEl) {
-      el.scrollTop = targetEl.offsetTop
-    }
-  }
+  // 精准将用户当前发送的这条消息对齐到容器顶部
+  scrollToMessage(targetMsgId)
 
   // 创建 AI 占位消息
   const aiMsgId = 'ai_' + Date.now()
@@ -578,6 +561,7 @@ async function sendMessage() {
   messages.value.push(aiMsg)
   streaming.value = true
   streamingMsgId.value = aiMsgId
+  continueContentBuffer.value = ''
 
   try {
     const response = await aiService.chatStream(
@@ -598,7 +582,6 @@ async function sendMessage() {
 
     let reasoningBuffer = ''
     let contentBuffer = ''
-    let scrollTimer = null
     let hasStartedContent = false
 
     const flushUpdate = () => {
@@ -606,17 +589,6 @@ async function sendMessage() {
       if (idx === -1) return
       const updated = { ...messages.value[idx], content: contentBuffer, reasoningContent: reasoningBuffer }
       messages.value.splice(idx, 1, updated)
-    }
-
-    const scheduleScroll = () => {
-      if (scrollTimer) return
-      scrollTimer = setTimeout(() => {
-        scrollTimer = null
-        // 只有还没开始正文时才持续滚到底
-        if (!hasStartedContent) {
-          scrollToBottom()
-        }
-      }, 16)
     }
 
     while (true) {
@@ -656,15 +628,10 @@ async function sendMessage() {
                 if (detailsEl) {
                   detailsEl.removeAttribute('open')
                 }
-                // 滚动到正文开头（顶部留30px）
-                await nextTick()
-                const contentEl = el.querySelector(`[data-msg-id="${aiMsgId}"] .msg-content`)
-                if (contentEl) {
-                  el.scrollTop = contentEl.offsetTop - 30
-                }
               }
+              // 保证当前发送的消息依然在顶部显示
+              scrollToMessage(targetMsgId)
             }
-            scheduleScroll()
             break
           case 'reasoning':
             reasoningBuffer += data.content
@@ -673,7 +640,6 @@ async function sendMessage() {
           case 'tool_call':
             contentBuffer += '\n\n🔍 *正在查询数据库...*'
             flushUpdate()
-            scheduleScroll()
             break
           case 'tool_result':
             contentBuffer = contentBuffer.replace(/\n\n🔍 \*正在查询数据库...\*/g, '')
@@ -682,17 +648,17 @@ async function sendMessage() {
           case 'error':
             contentBuffer = data.content
             flushUpdate()
-            scheduleScroll()
             break
           case 'done':
+            // 修复 BUG：这里要检测 contentBuffer 而不是 continueContentBuffer
+            const finalContent = contentBuffer
+            if (await checkAndExecuteTerminalCommand(finalContent)) {
+              continueStreaming.value = 'terminal'
+              return
+            }
             break
         }
       }
-    }
-
-    if (scrollTimer) {
-      clearTimeout(scrollTimer)
-      scrollTimer = null
     }
   } catch (e) {
     const msg = messages.value.find(m => m._id === aiMsgId)
@@ -708,9 +674,12 @@ async function sendMessage() {
     const msg = messages.value.find(m => m._id === aiMsgId)
     if (msg) {
       msg.content = msg.content.replace(/\n\n🔍 \*正在查询数据库...\*/g, '')
-      
+
       // 检测是否有终端命令需要执行
-      checkAndExecuteTerminalCommand(msg.content)
+      if (await checkAndExecuteTerminalCommand(msg.content)) {
+        // 终端命令正在执行中，不清理状态也不 reload
+        return
+      }
     }
 
     // 重新加载消息以获取完整的服务端数据
@@ -736,6 +705,7 @@ async function reloadMessages() {
     })
     syncLatestDraft()
     await nextTick()
+    // reload 后滚到底部，这是对老消息读取时的预期行为
     scrollToBottom()
     await loadConversations()
   } catch (e) {
@@ -745,13 +715,10 @@ async function reloadMessages() {
 
 // ============ 终端执行 ============
 async function executeTerminalCommand(command) {
-  console.log('[Terminal] 准备执行命令:', command)
-  
   try {
     terminalExecutionInProgress.value = true
     
     const result = await terminalService.executeCommand(command)
-    console.log('[Terminal] 命令执行结果:', result)
     
     // 将执行结果返回给 AI
     await sendTerminalResultToAI(command, result)
@@ -770,8 +737,6 @@ async function executeTerminalCommand(command) {
 }
 
 async function sendTerminalResultToAI(command, result) {
-  console.log('[Terminal] 将结果返回给 AI，继续对话')
-
   // 先显示终端结果
   terminalResult.value = {
     command,
@@ -797,6 +762,7 @@ ${result.error ? `错误信息:\n${result.error}` : ''}
   // 调用后端继续对话接口
   try {
     continueStreaming.value = true
+    continueContentBuffer.value = ''
 
     // 创建 AI 继续回复的占位
     const aiMsgId = 'continue_' + Date.now()
@@ -878,26 +844,36 @@ ${result.error ? `错误信息:\n${result.error}` : ''}
       messages.value[errorIdx].content = `❌ 继续对话失败: ${e.message}`
     }
   } finally {
+    if (continueStreaming.value === 'terminal') {
+      // 终端命令正在执行中，不清理状态
+      return
+    }
+
+    const terminalText = continueContentBuffer.value
     continueStreaming.value = false
     continueStreamingMsgId.value = null
     continueContentBuffer.value = ''
     terminalResult.value = null
+
+    if (terminalText && await checkAndExecuteTerminalCommand(terminalText)) {
+      continueStreaming.value = 'terminal'
+      return
+    }
+
     await reloadMessages()
   }
 }
 
-function checkAndExecuteTerminalCommand(text) {
+async function checkAndExecuteTerminalCommand(text) {
   if (!terminalService.isDesktopEnv()) {
-    console.log('[Terminal] 不在桌面端环境，跳过终端命令检测')
     return false
   }
   
   const detection = terminalService.detectTerminalCommand(text)
   if (detection.hasCommand) {
-    console.log('[Terminal] 检测到终端命令:', detection.command)
     pendingTerminalCommand.value = detection.command
-    // 自动执行命令
-    executeTerminalCommand(detection.command)
+    // 自动执行命令，等待执行结束后再继续后续步骤
+    await executeTerminalCommand(detection.command)
     return true
   }
   
@@ -963,6 +939,22 @@ function scrollToBottom() {
   })
 }
 
+// 新增：精准滚动到指定消息顶部
+function scrollToMessage(msgId) {
+  nextTick(() => {
+    const el = messagesContainer.value
+    if (!el || !msgId) return
+    const targetEl = el.querySelector(`[data-msg-id="${msgId}"]`)
+    if (targetEl) {
+      // 替代原来的 targetEl.offsetTop，使用 ClientRect 规避因为 position: relative 导致的祖先错误偏移问题
+      const containerRect = el.getBoundingClientRect()
+      const targetRect = targetEl.getBoundingClientRect()
+      // 计算目标元素和容器的相对距离，再减去 16px 的边距留白
+      el.scrollTop = el.scrollTop + (targetRect.top - containerRect.top) - 16
+    }
+  })
+}
+
 async function toggleArchive(conv) {
   try {
     await aiService.archiveConversation(conv.id, !conv.isArchived)
@@ -982,7 +974,6 @@ async function togglePin(conv) {
 }
 
 function openActionDraft(message) {
-  console.log('[AI] openActionDraft', { id: message?.id, actionDraft: message?.actionDraft })
   if (message?.actionDraft?.validation && !message.actionDraft.validation.ok) {
     setActionFeedback(`草案缺少必要字段：${message.actionDraft.validation.errors.join('、')}`, 'error')
     return
@@ -1071,11 +1062,9 @@ function validateDraftSchema(kind, mode, payload) {
 function extractDraftMessage(message) {
   const raw = message?.attachments || message?.Attachments
   if (!raw) {
-    console.log('[AI] extractDraftMessage no draft attachments', { id: message?.id, role: message?.role })
     return null
   }
   const draft = normalizeDraft(raw)
-  console.log('[AI] extractDraftMessage parsed', { id: message?.id, role: message?.role, draft })
   return draft && draft.kind !== 'unknown' ? draft : null
 }
 
@@ -1087,7 +1076,6 @@ function syncLatestDraft() {
     if (draft.expiresAt && new Date(draft.expiresAt) < now) return false
     return true
   })
-  console.log('[AI] syncLatestDraft', { latestId: latest?.id, draft: latest?.actionDraft })
   if (!latest?.actionDraft) {
     pendingAction.value = null
     pendingActionVisible.value = false
@@ -1131,7 +1119,6 @@ async function startEditMessage(msg) {
 }
 
 async function confirmPendingAction() {
-  console.log('[AI] confirmPendingAction clicked', { currentConvId: currentConvId.value, editableMessageId: editableMessageId.value, pendingAction: pendingAction.value })
   if (!pendingAction.value || !currentConvId.value || !editableMessageId.value || confirmingPendingAction.value) return
 
   if (pendingAction.value.expiresAt && new Date(pendingAction.value.expiresAt) < new Date()) {
@@ -1144,7 +1131,6 @@ async function confirmPendingAction() {
 
   try {
     const res = await aiService.confirmDraft(currentConvId.value, editableMessageId.value)
-    console.log('[AI] confirmDraft response', res)
     setActionFeedback(`已确认执行：${res?.kind || pendingAction.value.kind} - ${res?.action || 'completed'}`, 'success')
     pendingAction.value.status = 'confirmed'
     pendingAction.value = null
@@ -1160,7 +1146,6 @@ async function confirmPendingAction() {
 }
 
 async function regenerateFromMessage(msg) {
-  console.log('[AI] regenerateFromMessage', { id: msg?.id, role: msg?.role, currentConvId: currentConvId.value })
   if (!msg?.id || msg.role !== 'assistant' || !currentConvId.value) return
   try {
     await aiService.regenerateMessage(currentConvId.value, msg.id)
@@ -1348,7 +1333,7 @@ function safeParse(str) {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 2px;
+  margin-bottom: 2px;
 }
 .mini-badge {
   display: inline-flex;
@@ -1461,6 +1446,7 @@ function safeParse(str) {
   flex-direction: column;
   gap: var(--space-4);
   background: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(239,246,255,0.55) 100%);
+  position: relative;
 }
 
 .chat-welcome {

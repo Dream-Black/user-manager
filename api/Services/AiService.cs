@@ -800,6 +800,33 @@ public class AiService
                         required = Array.Empty<string>()
                     }
                 }
+            },
+            new
+            {
+                type = "function",
+                function = new
+                {
+                    name = "get_terminal_usage_guide",
+                    description = "提供当前项目中正确使用终端命令的方法、注意事项和推荐目录。用户要求查看项目架构或目录结构时优先调用此工具，再决定是否输出终端命令。",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            path = new
+                            {
+                                type = "string",
+                                description = "目标项目路径，例如 C:\\Users\\22618\\Desktop\\AI Claw"
+                            },
+                            objective = new
+                            {
+                                type = "string",
+                                description = "用户目标，例如了解架构、查看目录、定位文件"
+                            }
+                        },
+                        required = Array.Empty<string>()
+                    }
+                }
             }
         };
     }
@@ -815,6 +842,7 @@ public class AiService
                 "get_task_detail" => await GetTaskDetail(arguments),
                 "get_resource_paths" => await GetResourcePaths(arguments),
                 "get_statistics" => await GetStatistics(),
+                "get_terminal_usage_guide" => await GetTerminalUsageGuide(arguments),
                 _ => JsonSerializer.Serialize(new { error = $"未知工具: {functionName}" })
             };
         }
@@ -1031,6 +1059,36 @@ public class AiService
         return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = false });
     }
 
+    private Task<string> GetTerminalUsageGuide(string arguments)
+    {
+        var args = JsonSerializer.Deserialize<Dictionary<string, string>>(arguments ?? "{}") ?? new Dictionary<string, string>();
+        var path = args.TryGetValue("path", out var p) ? p : "C:\\Users\\22618\\Desktop\\AI Claw";
+        var objective = args.TryGetValue("objective", out var o) ? o : "了解项目架构";
+
+        var guide = new
+        {
+            objective,
+            path,
+            rules = new[]
+            {
+                "先切换到项目根目录再执行目录查看命令",
+                "优先使用 dir / tree / rg 来了解目录结构与文件位置",
+                "如需找代码入口，优先查看 README、sln、package.json、Program.cs、main.js",
+                "不要直接执行危险命令，涉及删除、覆盖、格式化时必须二次确认",
+                "如果目标是理解架构，先查看根目录结构，再按前端、后端、代理分层查看"
+            },
+            examples = new[]
+            {
+                $"cd \"{path}\"",
+                "dir",
+                "tree /f /a",
+                "rg -n \"AiController|AiService|localBridge|chatStream|terminal\" ."
+            }
+        };
+
+        return Task.FromResult(JsonSerializer.Serialize(guide, new JsonSerializerOptions { WriteIndented = false }));
+    }
+
     // ==================== 工具方法 ====================
 
     private static bool LooksLikeActionRequest(string text)
@@ -1066,11 +1124,13 @@ public class AiService
         // 系统提示词
         var draftFormat = BuildDraftSchemaPrompt();
         var permissionNote = "你具备生成新增/编辑草案的能力。你不能直接落库，但可以输出待确认草案。不要说'我没有权限'，应表述为'需要你确认后由系统执行'。";
-        var terminalNote = "你还具备在桌面端环境执行终端命令的能力。当需要执行系统命令时，使用 <terminal>命令内容</terminal> 格式包裹命令。命令会被自动执行，执行结果会返回给你继续处理。";
-        var terminalRestriction = "重要限制：你没有 execute_command 或任何终端执行工具，禁止调用任何终端执行工具。如果需要执行命令（dir, git, node 等），必须在回复中用 <terminal>命令</terminal> 标签包裹，前端会自动执行。";
+        var terminalNote = "你还具备在桌面端环境执行终端命令的能力。当需要执行系统命令时，先调用终端使用说明工具获取正确用法，再使用 <terminal>命令内容</terminal> 格式包裹命令。命令会被自动执行，执行结果会返回给你继续处理。";
+        var terminalRestriction = "重要限制：你没有 execute_command 或任何终端执行工具，禁止直接声称自己可以执行终端命令。如果需要执行命令（dir, git, node 等），必须先理解终端使用说明，然后在回复中用 <terminal>命令</terminal> 标签包裹命令，前端会自动执行。";
+        var terminalGuideNote = "当用户要求你查看项目架构、目录结构、文件清单、代码分布，或者需要你先了解当前仓库再分析时，必须先调用终端使用说明工具获取正确的命令格式与建议。调用该工具后，只能调用一次，不要重复调用；接下来必须基于返回结果直接给出一个可执行的终端命令，并用 <terminal>命令内容</terminal> 包裹它。";
+        var terminalGuideRestriction = "如果已经调用过终端使用说明工具，后续不要再次调用它；不要只复述建议或只做推理，必须输出具体的终端命令。对于架构/目录类需求，优先给出 cd 到项目根目录后的 dir / tree / rg 命令。";
         var systemPrompt = deepThink
-            ? $"{permissionNote} {terminalNote} {terminalRestriction} 你是 ProjectHub 的个人工作助理，具备数据库查询能力。你可以调用工具来获取项目、任务等数据。请用中文回答，给出具体的分析和建议。当你需要数据时，直接调用相应的工具函数获取实时数据。若你判断用户意图是新增/编辑项目、任务、资源，请先生成一个结构化写入草案，但不要直接写库；草案必须是严格 JSON，并且只放在回复末尾，格式必须符合：{draftFormat}。正文要先解释依据。{memorySummary}"
-            : $"{permissionNote} {terminalNote} {terminalRestriction} 你是 ProjectHub 的个人工作助理，可以用中文帮助用户查询项目进度、任务状态等。请简洁专业地回答。当用户询问今天该做什么或项目情况时，请先调用工具查询实时数据再回答。若你判断用户意图是新增/编辑项目、任务、资源，请先生成一个结构化写入草案，但不要直接写库；草案必须是严格 JSON，并且只放在回复末尾，格式必须符合：{draftFormat}。正文要先解释依据。{memorySummary}";
+            ? $"{permissionNote} {terminalNote} {terminalRestriction} {terminalGuideNote} {terminalGuideRestriction} 你是 ProjectHub 的个人工作助理，具备数据库查询能力。你可以调用工具来获取项目、任务等数据。请用中文回答，给出具体的分析和建议。当你需要数据时，直接调用相应的工具函数获取实时数据。若你判断用户意图是新增/编辑项目、任务、资源，请先生成一个结构化写入草案，但不要直接写库；草案必须是严格 JSON，并且只放在回复末尾，格式必须符合：{draftFormat}。正文要先解释依据。{memorySummary}"
+            : $"{permissionNote} {terminalNote} {terminalRestriction} {terminalGuideNote} {terminalGuideRestriction} 你是 ProjectHub 的个人工作助理，可以用中文帮助用户查询项目进度、任务状态等。请简洁专业地回答。当用户询问今天该做什么或项目情况时，请先调用工具查询实时数据再回答。若你判断用户意图是新增/编辑项目、任务、资源，请先生成一个结构化写入草案，但不要直接写库；草案必须是严格 JSON，并且只放在回复末尾，格式必须符合：{draftFormat}。正文要先解释依据。{memorySummary}";
 
         messages.Add(new
         {

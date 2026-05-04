@@ -17,7 +17,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from './components/layout/Sidebar.vue'
 import Header from './components/layout/Header.vue'
@@ -33,6 +33,21 @@ const noChromeRoutePaths = new Set(['/login', '/register', '/404'])
 
 const showChrome = computed(() => {
   return !(noChromeRouteNames.has(route.name) || noChromeRoutePaths.has(route.path) || route.meta?.layout === 'blank')
+})
+
+const handleGlobalShortcut = (event) => {
+  if (event.ctrlKey && event.key === '1') {
+    event.preventDefault()
+    window.location.reload()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleGlobalShortcut)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleGlobalShortcut)
 })
 </script>
 

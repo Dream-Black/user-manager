@@ -133,11 +133,12 @@ public class AppDbContext : DbContext
         {
             entity.HasIndex(e => e.Email).IsUnique();
             entity.HasIndex(e => e.Name);
+            entity.Property(e => e.Password).HasMaxLength(512);
         });
 
         // 种子数据 - 默认用户
         modelBuilder.Entity<User>().HasData(
-            new User { Id = 1, Name = "用户", CreatedAt = DateTime.Now, UpdatedAt = DateTime.Now }
+            new User { Id = 1, Name = "用户", Password = null, CreatedAt = DateTime.Now, UpdatedAt = DateTime.Now }
         );
 
         // ===== 资源管理模块配置 =====

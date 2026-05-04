@@ -2,16 +2,41 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 30000, // 30秒，普通接口超时
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
   }
+})
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token')
+  const expiresAt = Number(localStorage.getItem('tokenExpiresAt') || 0)
+
+  if (token) {
+    if (expiresAt && Date.now() > expiresAt) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('tokenExpiresAt')
+      localStorage.removeItem('user')
+    } else {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+  }
+
+  return config
 })
 
 // 响应拦截器
 api.interceptors.response.use(
   response => response.data,
   error => {
+    if (error?.response?.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('tokenExpiresAt')
+      localStorage.removeItem('user')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    }
     console.error('API Error:', error)
     return Promise.reject(error)
   }
@@ -229,7 +254,7 @@ export const aiService = {
   chatStream: async (conversationId, message, deepThink, attachments, model) => {
     const response = await fetch(`/api/ai/conversations/${conversationId}/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
       body: JSON.stringify({
         message,
         deepThink,
@@ -245,7 +270,7 @@ export const aiService = {
   continueChat: async (conversationId, toolResult) => {
     const response = await fetch(`/api/ai/conversations/${conversationId}/continue`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
       body: JSON.stringify({
         toolResult
       })
@@ -339,4 +364,4 @@ export const terminalService = {
     }
 }
 
-export default api;api
+export default api

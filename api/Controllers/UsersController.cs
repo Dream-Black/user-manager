@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProjectHub.Api.Data;
@@ -7,6 +9,7 @@ namespace ProjectHub.Api.Controllers;
 
 [ApiController]
 [Route("api/users")]
+[Authorize]
 public class UsersController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -22,7 +25,15 @@ public class UsersController : ControllerBase
     [HttpGet("current")]
     public async Task<IActionResult> GetCurrentUser()
     {
-        var user = await _context.Users.FirstOrDefaultAsync();
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        User? user = null;
+
+        if (int.TryParse(userIdClaim, out var userId))
+        {
+            user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        }
+
+        user ??= await _context.Users.FirstOrDefaultAsync();
         
         if (user == null)
         {
@@ -52,7 +63,15 @@ public class UsersController : ControllerBase
     [HttpPut("current")]
     public async Task<IActionResult> UpdateCurrentUser([FromBody] UpdateUserRequest request)
     {
-        var user = await _context.Users.FirstOrDefaultAsync();
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        User? user = null;
+
+        if (int.TryParse(userIdClaim, out var userId))
+        {
+            user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        }
+
+        user ??= await _context.Users.FirstOrDefaultAsync();
         
         if (user == null)
         {

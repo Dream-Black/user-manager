@@ -20,6 +20,10 @@ public class User
     [EmailAddress]
     public string? Email { get; set; }
 
+    /// <summary>密码哈希</summary>
+    [MaxLength(512)]
+    public string? Password { get; set; }
+
     /// <summary>手机号</summary>
     [MaxLength(20)]
     public string? Phone { get; set; }

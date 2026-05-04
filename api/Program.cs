@@ -1,7 +1,10 @@
 using ProjectHub.Api.Data;
 using ProjectHub.Api.Services;
 using ProjectHub.Api.Filters;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -38,6 +41,7 @@ builder.Services.AddHttpClient("", client =>
     client.Timeout = TimeSpan.FromMinutes(10);
 });
 builder.Services.AddScoped<AiService>();
+builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<IFileLogService, FileLogService>(); // 所有环境都需要
 
 // 配置控制器 + JSON选项
@@ -62,6 +66,28 @@ builder.Services.AddCors(options =>
               .AllowAnyHeader();
     });
 });
+
+// 配置 JWT
+var jwtSecret = builder.Configuration["Jwt:Secret"] ?? "ProjectHub-Development-Secret-Key-2026-Long-Enough";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "ProjectHub";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "ProjectHub";
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateIssuerSigningKey = true,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
+        };
+    });
+builder.Services.AddAuthorization();
 
 // 配置 Swagger
 builder.Services.AddEndpointsApiExplorer();
@@ -205,6 +231,7 @@ using (var scope = app.Services.CreateScope())
                     Id INT AUTO_INCREMENT PRIMARY KEY,
                     Name VARCHAR(100) NOT NULL,
                     Email VARCHAR(200) NULL,
+                    Password VARCHAR(512) NULL,
                     Phone VARCHAR(20) NULL,
                     Department VARCHAR(50) NULL,
                     Role VARCHAR(100) NULL,
@@ -218,8 +245,10 @@ using (var scope = app.Services.CreateScope())
             
             // 插入默认用户
             command.CommandText = @"
-                INSERT INTO Users (Id, Name, CreatedAt, UpdatedAt) VALUES (1, '用户', NOW(), NOW())
-                ON DUPLICATE KEY UPDATE Name=VALUES(Name)";
+                INSERT INTO Users (Id, Name, Password, CreatedAt, UpdatedAt) VALUES (1, '用户', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', NOW(), NOW())
+                ON DUPLICATE KEY UPDATE 
+                    Name=VALUES(Name),
+                    Password=CASE WHEN Password IS NULL OR Password = '' THEN VALUES(Password) ELSE Password END";
             command.ExecuteNonQuery();
             logger.LogInformation("✓ Users 表已创建并填充默认数据");
         }
@@ -525,6 +554,24 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ Users.Density 列已添加");
         }
         
+        if (!ColumnExists("Users", "Password"))
+        {
+            command.CommandText = "ALTER TABLE Users ADD COLUMN Password VARCHAR(512) NULL AFTER Email";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Users.Password 列已添加");
+        }
+
+        command.CommandText = @"
+            UPDATE Users
+            SET Password = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92'
+            WHERE (Password IS NULL OR Password = '')
+              AND Id <> 1";
+        var rowsUpdated = command.ExecuteNonQuery();
+        if (rowsUpdated > 0)
+        {
+            logger.LogInformation("✓ Users.Password 空值已初始化为默认哈希，共 {Count} 条", rowsUpdated);
+        }
+        
         // 19. 记录已应用的迁移
         command.CommandText = @"
             INSERT IGNORE INTO __EFMigrationsHistory (MigrationId, ProductVersion)
@@ -562,6 +609,7 @@ app.UseSwaggerUI(c =>
 app.MapGet("/", () => Results.Redirect("/swagger", permanent: true));
 
 app.UseCors();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
