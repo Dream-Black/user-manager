@@ -218,6 +218,32 @@
             </span>
           </div>
         </div>
+
+        <div v-if="terminalResult" class="terminal-result-card">
+          <details :open="!terminalResultCollapsed">
+            <summary class="terminal-result-header" @click="terminalResultCollapsed = !terminalResultCollapsed">
+              <Terminal :size="16" />
+              <span>终端执行结果</span>
+              <span class="terminal-command">{{ terminalResult.command }}</span>
+              <span v-if="terminalResult.success" class="terminal-badge success">成功</span>
+              <span v-else class="terminal-badge error">失败</span>
+            </summary>
+            <div class="terminal-result-content">
+              <div v-if="terminalResult.stdout" class="terminal-stdout">
+                <div class="terminal-label">输出：</div>
+                <pre class="terminal-output">{{ terminalResult.stdout }}</pre>
+              </div>
+              <div v-if="terminalResult.stderr" class="terminal-stderr">
+                <div class="terminal-label">错误：</div>
+                <pre class="terminal-output error">{{ terminalResult.stderr }}</pre>
+              </div>
+              <div v-if="terminalResult.error" class="terminal-error">
+                <div class="terminal-label">异常：</div>
+                <pre class="terminal-output error">{{ terminalResult.error }}</pre>
+              </div>
+            </div>
+          </details>
+        </div>
       </div>
 
       <div class="chat-input-area">
@@ -271,9 +297,9 @@
 
 <script setup>
 import { ref, nextTick, onMounted, onUnmounted, watch, computed } from 'vue'
-import { Plus, Trash2, Send, Paperclip, X, FileText, Image, Brain, Database, Search } from 'lucide-vue-next'
+import { Plus, Trash2, Send, Paperclip, X, FileText, Image, Brain, Database, Search, Terminal } from 'lucide-vue-next'
 import { Edit1Icon, RefreshIcon, PinIcon, FolderOffIcon } from 'tdesign-icons-vue-next'
-import { aiService, projectService, taskService } from '@/services/dataService'
+import { aiService, projectService, taskService, terminalService } from '@/services/dataService';
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
@@ -305,6 +331,14 @@ const editingMessage = ref(null)
 const confirmingPendingAction = ref(false)
 const actionFeedback = ref('')
 const actionFeedbackType = ref('')
+// 终端执行相关状态
+const terminalExecutionInProgress = ref(false)
+const pendingTerminalCommand = ref(null)
+const terminalResult = ref(null)
+const terminalResultCollapsed = ref(true)
+const continueStreaming = ref(false)
+const continueStreamingMsgId = ref(null)
+const continueContentBuffer = ref('')
 
 const currentTitle = computed(() => {
   const conv = conversations.value.find(c => c.id === currentConvId.value)
@@ -674,6 +708,9 @@ async function sendMessage() {
     const msg = messages.value.find(m => m._id === aiMsgId)
     if (msg) {
       msg.content = msg.content.replace(/\n\n🔍 \*正在查询数据库...\*/g, '')
+      
+      // 检测是否有终端命令需要执行
+      checkAndExecuteTerminalCommand(msg.content)
     }
 
     // 重新加载消息以获取完整的服务端数据
@@ -704,6 +741,167 @@ async function reloadMessages() {
   } catch (e) {
     console.error('重新加载消息失败:', e)
   }
+}
+
+// ============ 终端执行 ============
+async function executeTerminalCommand(command) {
+  console.log('[Terminal] 准备执行命令:', command)
+  
+  try {
+    terminalExecutionInProgress.value = true
+    
+    const result = await terminalService.executeCommand(command)
+    console.log('[Terminal] 命令执行结果:', result)
+    
+    // 将执行结果返回给 AI
+    await sendTerminalResultToAI(command, result)
+    
+  } catch (e) {
+    console.error('[Terminal] 执行命令失败:', e)
+    // 即使失败也返回错误信息给 AI
+    await sendTerminalResultToAI(command, {
+      success: false,
+      error: e.message
+    })
+  } finally {
+    terminalExecutionInProgress.value = false
+    pendingTerminalCommand.value = null
+  }
+}
+
+async function sendTerminalResultToAI(command, result) {
+  console.log('[Terminal] 将结果返回给 AI，继续对话')
+
+  // 先显示终端结果
+  terminalResult.value = {
+    command,
+    success: result.success,
+    stdout: result.stdout || '',
+    stderr: result.stderr || '',
+    error: result.error || ''
+  }
+  terminalResultCollapsed.value = false
+
+  // 构造工具结果文本
+  const toolResultText = `
+命令: ${command}
+成功: ${result.success}
+${result.stdout ? `标准输出:\n${result.stdout}` : ''}
+${result.stderr ? `错误输出:\n${result.stderr}` : ''}
+${result.error ? `错误信息:\n${result.error}` : ''}
+  `.trim()
+
+  await nextTick()
+  scrollToBottom()
+
+  // 调用后端继续对话接口
+  try {
+    continueStreaming.value = true
+
+    // 创建 AI 继续回复的占位
+    const aiMsgId = 'continue_' + Date.now()
+    continueStreamingMsgId.value = aiMsgId
+
+    const aiMsg = {
+      _id: aiMsgId,
+      role: 'assistant',
+      content: '',
+      reasoningContent: '',
+      toolCalls: null,
+      filesJson: null
+    }
+    messages.value.push(aiMsg)
+
+    const response = await aiService.continueChat(currentConvId.value, toolResultText)
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      let eventEnd
+      while ((eventEnd = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, eventEnd).trim()
+        buffer = buffer.slice(eventEnd + 2)
+        if (!rawEvent) continue
+
+        const dataLine = rawEvent
+          .split(/\r?\n/)
+          .find(line => line.startsWith('data: '))
+        if (!dataLine) continue
+
+        const dataStr = dataLine.substring(6).trim()
+        if (!dataStr) continue
+
+        const data = safeParse(dataStr)
+        if (!data) continue
+
+        switch (data.type) {
+          case 'content':
+            continueContentBuffer.value += data.content
+            const idx = messages.value.findIndex(m => m._id === aiMsgId)
+            if (idx !== -1) {
+              messages.value[idx].content = continueContentBuffer.value
+            }
+            await nextTick()
+            scrollToBottom()
+            break
+          case 'reasoning':
+            const reasonIdx = messages.value.findIndex(m => m._id === aiMsgId)
+            if (reasonIdx !== -1) {
+              messages.value[reasonIdx].reasoningContent = (messages.value[reasonIdx].reasoningContent || '') + data.content
+            }
+            break
+          case 'error':
+            const errorIdx = messages.value.findIndex(m => m._id === aiMsgId)
+            if (errorIdx !== -1) {
+              messages.value[errorIdx].content = `❌ ${data.content}`
+            }
+            break
+          case 'done':
+            break
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[Terminal] 继续对话失败:', e)
+    const errorIdx = messages.value.findIndex(m => m._id === continueStreamingMsgId.value)
+    if (errorIdx !== -1) {
+      messages.value[errorIdx].content = `❌ 继续对话失败: ${e.message}`
+    }
+  } finally {
+    continueStreaming.value = false
+    continueStreamingMsgId.value = null
+    continueContentBuffer.value = ''
+    terminalResult.value = null
+    await reloadMessages()
+  }
+}
+
+function checkAndExecuteTerminalCommand(text) {
+  if (!terminalService.isDesktopEnv()) {
+    console.log('[Terminal] 不在桌面端环境，跳过终端命令检测')
+    return false
+  }
+  
+  const detection = terminalService.detectTerminalCommand(text)
+  if (detection.hasCommand) {
+    console.log('[Terminal] 检测到终端命令:', detection.command)
+    pendingTerminalCommand.value = detection.command
+    // 自动执行命令
+    executeTerminalCommand(detection.command)
+    return true
+  }
+  
+  return false
 }
 
 // ============ 附件处理 ============
@@ -1687,6 +1885,73 @@ function safeParse(str) {
 @keyframes dot-pulse {
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
   40% { transform: scale(1); opacity: 1; }
+}
+
+.terminal-result-card {
+  margin: var(--space-4) 0;
+  padding: 0 var(--space-4);
+  max-width: min(760px, 80%);
+  align-self: flex-start;
+}
+.terminal-result-card details {
+  background: #1e1e1e;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.terminal-result-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: #2d2d2d;
+  color: #e0e0e0;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  list-style: none;
+}
+.terminal-result-header::-webkit-details-marker { display: none; }
+.terminal-result-header .terminal-command {
+  color: #4fc3f7;
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+}
+.terminal-badge {
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+}
+.terminal-badge.success {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+.terminal-badge.error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+.terminal-result-content {
+  padding: var(--space-4);
+  color: #e0e0e0;
+  font-size: var(--font-size-sm);
+}
+.terminal-label {
+  color: #888;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.terminal-output {
+  margin: 0;
+  padding: var(--space-3);
+  background: #0d0d0d;
+  border-radius: var(--radius-base);
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #10b981;
+}
+.terminal-output.error {
+  color: #ef4444;
 }
 
 .chat-input-area {

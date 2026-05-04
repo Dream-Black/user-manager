@@ -7,6 +7,8 @@ import os
 import socket
 import platform
 import uvicorn
+import subprocess
+import shlex
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -205,6 +207,10 @@ class TestPathRequest(BaseModel):
     path: str
 
 
+class ExecuteCommandRequest(BaseModel):
+    command: str
+
+
 @app.post("/resource-paths/test")
 async def test_resource_path(request: TestPathRequest):
     """
@@ -244,6 +250,45 @@ async def add_allowed_path(request: AddPathRequest):
 async def get_allowed_paths():
     """获取允许访问的路径列表"""
     return {"allowed_paths": config.allowed_paths}
+
+
+# ==================== 终端执行接口 ====================
+
+@app.post("/terminal/execute")
+async def execute_terminal_command(request: ExecuteCommandRequest):
+    """
+    执行终端命令
+    """
+    command = request.command
+    try:
+        # 使用 subprocess 执行命令，捕获 stdout 和 stderr
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        return {
+            "success": True,
+            "command": command,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "return_code": result.returncode
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "command": command,
+            "error": "Command timed out after 60 seconds"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "command": command,
+            "error": str(e)
+        }
 
 
 # ==================== 主程序 ====================

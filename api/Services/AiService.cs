@@ -316,6 +316,73 @@ public class AiService
         }
     }
 
+    /// <summary>
+    /// 继续对话（工具执行结果返回后调用）
+    /// </summary>
+    public async Task ContinueStreamAsync(
+        int conversationId,
+        string toolResult,
+        Func<string, Task> onEvent)
+    {
+        var settings = await _context.UserSettings.FirstOrDefaultAsync();
+        if (settings == null || string.IsNullOrEmpty(settings.DeepSeekApiKey))
+        {
+            await onEvent(SseEvent("error", "请先在设置中配置 DeepSeek API Key"));
+            await onEvent(SseDone());
+            return;
+        }
+
+        var conversation = await _context.Conversations.FindAsync(conversationId);
+        if (conversation == null)
+        {
+            await onEvent(SseEvent("error", "对话不存在"));
+            await onEvent(SseDone());
+            return;
+        }
+
+        await _fileLog.WriteAsync("AI", "info", "继续对话请求", new { conversationId, toolResult });
+
+        try
+        {
+            // 获取对话历史
+            var history = await GetConversationMessages(conversationId);
+
+            // 构建消息列表，包含工具结果
+            var messages = new List<object>();
+
+            // 系统提示词
+            var systemPrompt = "你是 ProjectHub 的个人工作助理。工具已执行完毕，请根据结果继续回答用户问题。";
+            messages.Add(new { role = "system", content = systemPrompt });
+
+            // 添加历史消息（排除 system 类型）
+            foreach (var msg in history)
+            {
+                if (msg.Role == "system") continue;
+                if (msg.Role == "assistant" && !string.IsNullOrEmpty(msg.ToolCalls))
+                {
+                    messages.Add(new { role = "assistant", content = msg.Content ?? (string?)null });
+                    continue;
+                }
+                if (msg.Role == "tool") continue;
+                messages.Add(new { role = msg.Role, content = msg.Content ?? "" });
+            }
+
+            // 添加工具结果作为用户消息
+            messages.Add(new { role = "user", content = $"工具执行结果：\n{toolResult}\n\n请继续分析结果并回答用户。" });
+
+            // 调用 DeepSeek API
+            await StreamDeepSeekResponse(
+                messages, false, settings,
+                conversationId, "", false, null, onEvent);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "继续对话失败");
+            await onEvent(SseEvent("error", $"继续对话失败: {ex.Message}"));
+            await onEvent(SseDone());
+        }
+    }
+
     // ==================== DeepSeek API 调用 ====================
 
     private async Task StreamDeepSeekResponse(
@@ -355,11 +422,6 @@ public class AiService
             requestBody["max_tokens"] = 2048;
         }
 
-        if (wantsDraft)
-        {
-            requestBody["response_format"] = new { type = "json_object" };
-        }
-
         int round = 0;
         var fullContent = new StringBuilder();
         var reasoningContent = new StringBuilder();
@@ -368,6 +430,16 @@ public class AiService
         while (round < MaxFunctionCallRounds)
         {
             round++;
+            
+            if (round == 1 && wantsDraft)
+            {
+                requestBody["response_format"] = new { type = "json_object" };
+            }
+            else
+            {
+                requestBody.Remove("response_format");
+            }
+            
             var json = JsonSerializer.Serialize(requestBody);
             await _fileLog.WriteRawAsync("AI", "debug", $"DeepSeek request round={round} body={json}");
             var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
@@ -466,29 +538,49 @@ public class AiService
                 foreach (var tc in assistantToolCalls)
                 {
                     var funcName = tc.ContainsKey("name") ? tc["name"]?.ToString() ?? "" : "";
-                    await onEvent(SseEvent("tool_call", JsonSerializer.Serialize(new
+                    var funcArgs = tc.ContainsKey("arguments") ? tc["arguments"]?.ToString() ?? "{}" : "{}";
+                    
+                    var toolCallObj = new JsonObject
                     {
-                        name = funcName,
-                        arguments = tc.ContainsKey("arguments") ? tc["arguments"]?.ToString() : ""
-                    })));
+                        ["name"] = funcName,
+                        ["arguments"] = funcArgs
+                    };
+                    await onEvent(SseEvent("tool_call", toolCallObj.ToJsonString()));
                 }
 
                 // 添加 assistant 消息
-                messages.Add(new
+                var assistantToolMsg = new JsonObject
                 {
-                    role = "assistant",
-                    content = assistantContent.Length > 0 ? assistantContent.ToString() : (string?)null,
-                    tool_calls = assistantToolCalls.Select(tc => new
+                    ["role"] = "assistant"
+                };
+                if (assistantContent.Length > 0)
+                {
+                    assistantToolMsg["content"] = assistantContent.ToString();
+                }
+                if (assistantReasoning.Length > 0)
+                {
+                    assistantToolMsg["reasoning_content"] = assistantReasoning.ToString();
+                }
+                if (assistantToolCalls.Count > 0)
+                {
+                    var toolCallsArray = new JsonArray();
+                    foreach (var tc in assistantToolCalls)
                     {
-                        id = tc.ContainsKey("id") ? tc["id"]?.ToString() ?? "" : "call_1",
-                        type = "function",
-                        function = new
+                        var tcObj = new JsonObject
                         {
-                            name = tc.ContainsKey("name") ? tc["name"]?.ToString() ?? "" : "",
-                            arguments = tc.ContainsKey("arguments") ? tc["arguments"]?.ToString() ?? "" : ""
-                        }
-                    }).ToArray()
-                });
+                            ["id"] = tc.ContainsKey("id") ? tc["id"]?.ToString() ?? "call_1" : "call_1",
+                            ["type"] = "function",
+                            ["function"] = new JsonObject
+                            {
+                                ["name"] = tc.ContainsKey("name") ? tc["name"]?.ToString() ?? "" : "",
+                                ["arguments"] = tc.ContainsKey("arguments") ? tc["arguments"]?.ToString() ?? "{}" : "{}"
+                            }
+                        };
+                        toolCallsArray.Add(tcObj);
+                    }
+                    assistantToolMsg["tool_calls"] = toolCallsArray;
+                }
+                messages.Add(assistantToolMsg);
 
                 // 执行工具并添加结果
                 foreach (var tc in assistantToolCalls)
@@ -496,17 +588,21 @@ public class AiService
                     var funcName = tc.ContainsKey("name") ? tc["name"]?.ToString() ?? "" : "";
                     var funcArgs = tc.ContainsKey("arguments") ? tc["arguments"]?.ToString() ?? "{}" : "{}";
                     var toolResult = await ExecuteToolCall(funcName, funcArgs);
-                    await onEvent(SseEvent("tool_result", JsonSerializer.Serialize(new
+                    
+                    var toolResultObj = new JsonObject
                     {
-                        name = funcName,
-                        result = toolResult
-                    })));
-                    messages.Add(new
+                        ["name"] = funcName,
+                        ["result"] = JsonNode.Parse(toolResult) ?? toolResult
+                    };
+                    await onEvent(SseEvent("tool_result", toolResultObj.ToJsonString()));
+                    
+                    var toolMsg = new JsonObject
                     {
-                        role = "tool",
-                        tool_call_id = tc.ContainsKey("id") ? tc["id"]?.ToString() ?? "" : "call_1",
-                        content = toolResult
-                    });
+                        ["role"] = "tool",
+                        ["tool_call_id"] = tc.ContainsKey("id") ? tc["id"]?.ToString() ?? "call_1" : "call_1",
+                        ["content"] = toolResult
+                    };
+                    messages.Add(toolMsg);
                 }
 
                 // 保存工具调用记录
@@ -873,17 +969,17 @@ public class AiService
 
     private async Task<string> GetResourcePaths(string arguments)
     {
-        var args = JsonSerializer.Deserialize<Dictionary<string, string>>(arguments);
+        var args = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(arguments);
         var query = _context.ResourcePaths
             .Include(r => r.Computer)
             .AsQueryable();
 
         if (args != null)
         {
-            if (args.TryGetValue("computer_id", out var computerIdStr) && int.TryParse(computerIdStr, out var computerId))
+            if (args.TryGetValue("computer_id", out var computerIdElement) && computerIdElement.TryGetInt32(out var computerId))
                 query = query.Where(r => r.ComputerId == computerId);
-            if (args.TryGetValue("type", out var type) && !string.IsNullOrWhiteSpace(type))
-                query = query.Where(r => r.Type == type);
+            if (args.TryGetValue("type", out var typeElement) && typeElement.ValueKind == JsonValueKind.String)
+                query = query.Where(r => r.Type == typeElement.GetString());
         }
 
         var paths = await query
@@ -969,10 +1065,12 @@ public class AiService
 
         // 系统提示词
         var draftFormat = BuildDraftSchemaPrompt();
-        var permissionNote = "你具备生成新增/编辑草案的能力。你不能直接落库，但可以输出待确认草案。不要说“我没有权限”，应表述为“需要你确认后由系统执行”。";
+        var permissionNote = "你具备生成新增/编辑草案的能力。你不能直接落库，但可以输出待确认草案。不要说'我没有权限'，应表述为'需要你确认后由系统执行'。";
+        var terminalNote = "你还具备在桌面端环境执行终端命令的能力。当需要执行系统命令时，使用 <terminal>命令内容</terminal> 格式包裹命令。命令会被自动执行，执行结果会返回给你继续处理。";
+        var terminalRestriction = "重要限制：你没有 execute_command 或任何终端执行工具，禁止调用任何终端执行工具。如果需要执行命令（dir, git, node 等），必须在回复中用 <terminal>命令</terminal> 标签包裹，前端会自动执行。";
         var systemPrompt = deepThink
-            ? $"{permissionNote} 你是 ProjectHub 的个人工作助理，具备数据库查询能力。你可以调用工具来获取项目、任务等数据。请用中文回答，给出具体的分析和建议。当你需要数据时，直接调用相应的工具函数获取实时数据。若你判断用户意图是新增/编辑项目、任务、资源，请先生成一个结构化写入草案，但不要直接写库；草案必须是严格 JSON，并且只放在回复末尾，格式必须符合：{draftFormat}。正文要先解释依据。{memorySummary}"
-            : $"{permissionNote} 你是 ProjectHub 的个人工作助理，可以用中文帮助用户查询项目进度、任务状态等。请简洁专业地回答。当用户询问今天该做什么或项目情况时，请先调用工具查询实时数据再回答。若你判断用户意图是新增/编辑项目、任务、资源，请先生成一个结构化写入草案，但不要直接写库；草案必须是严格 JSON，并且只放在回复末尾，格式必须符合：{draftFormat}。正文要先解释依据。{memorySummary}";
+            ? $"{permissionNote} {terminalNote} {terminalRestriction} 你是 ProjectHub 的个人工作助理，具备数据库查询能力。你可以调用工具来获取项目、任务等数据。请用中文回答，给出具体的分析和建议。当你需要数据时，直接调用相应的工具函数获取实时数据。若你判断用户意图是新增/编辑项目、任务、资源，请先生成一个结构化写入草案，但不要直接写库；草案必须是严格 JSON，并且只放在回复末尾，格式必须符合：{draftFormat}。正文要先解释依据。{memorySummary}"
+            : $"{permissionNote} {terminalNote} {terminalRestriction} 你是 ProjectHub 的个人工作助理，可以用中文帮助用户查询项目进度、任务状态等。请简洁专业地回答。当用户询问今天该做什么或项目情况时，请先调用工具查询实时数据再回答。若你判断用户意图是新增/编辑项目、任务、资源，请先生成一个结构化写入草案，但不要直接写库；草案必须是严格 JSON，并且只放在回复末尾，格式必须符合：{draftFormat}。正文要先解释依据。{memorySummary}";
 
         messages.Add(new
         {
@@ -1011,6 +1109,10 @@ public class AiService
 
     private static string SseEvent(string type, string content)
     {
+        if (type == "tool_result" || type == "tool_call")
+        {
+            return $"data: {content}\n\n";
+        }
         return $"data: {JsonSerializer.Serialize(new { type, content })}\n\n";
     }
 

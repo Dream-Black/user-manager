@@ -241,6 +241,19 @@ export const aiService = {
     return response
   },
 
+  // 继续对话（用于工具执行结果返回后继续 AI 回复）
+  continueChat: async (conversationId, toolResult) => {
+    const response = await fetch(`/api/ai/conversations/${conversationId}/continue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toolResult
+      })
+    })
+
+    return response
+  },
+
   getBalance: async () => {
     return api.get('/ai/balance')
   }
@@ -276,9 +289,54 @@ export const subTaskService = {
 
 // ============ 甘特图相关 ============
 export const ganttService = {
-  getData: async (params = {}) => {
-    return api.get('/gantt', { params })
-  }
+    getData: async (params = {}) => {
+        return api.get('/gantt', { params });
+    }
 }
 
-export default api
+// ============ 终端执行相关（桌面端） ============
+export const terminalService = {
+    // 检测是否在桌面端环境
+    isDesktopEnv: () => {
+        return window.localBridge && typeof window.localBridge.post === 'function';
+    },
+
+    // 执行终端命令
+    executeCommand: async (command) => {
+        if (!window.localBridge) {
+            throw new Error('Not in desktop environment');
+        }
+        
+        const result = await window.localBridge.post('/terminal/execute', { command });
+        
+        if (result.status !== 200) {
+            throw new Error(result.data?.error || 'Execute failed');
+        }
+        
+        return result.data;
+    },
+
+    // 检测 AI 回复是否包含终端命令
+    detectTerminalCommand: (text) => {
+        // 检测是否有 <terminal> 标签包裹的命令
+        const terminalRegex = /<terminal>([\s\S]*?)<\/terminal>/i;
+        const match = text.match(terminalRegex);
+        
+        if (match && match[1]) {
+            return {
+                hasCommand: true,
+                command: match[1].trim(),
+                originalText: text
+            };
+        }
+        
+        return { hasCommand: false };
+    },
+
+    // 从文本中移除 terminal 标签
+    stripTerminalTags: (text) => {
+        return text.replace(/<terminal>[\s\S]*?<\/terminal>/gi, '').trim();
+    }
+}
+
+export default api;api

@@ -272,6 +272,53 @@ public class AiController : ControllerBase
         }
     }
 
+    /// <summary>继续对话（用于工具执行结果返回）</summary>
+    [HttpPost("conversations/{id:int}/continue")]
+    public async Task ContinueStream(int id, [FromBody] ContinueRequest? request)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(request.ToolResult))
+        {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
+            await Response.WriteAsJsonAsync(new { message = "工具结果不能为空" });
+            return;
+        }
+
+        Response.ContentType = "text/event-stream";
+        Response.Headers["Cache-Control"] = "no-cache";
+
+        HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>()?.DisableBuffering();
+
+        await Response.StartAsync();
+
+        var writer = Response.BodyWriter;
+
+        try
+        {
+            await _aiService.ContinueStreamAsync(
+                id,
+                request.ToolResult,
+                async (sseLine) =>
+                {
+                    var bytes = Encoding.UTF8.GetBytes(sseLine);
+                    var mem = writer.GetMemory(bytes.Length);
+                    bytes.CopyTo(mem);
+                    writer.Advance(bytes.Length);
+                    await writer.FlushAsync();
+                });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "SSE 继续对话异常");
+            var errorEvent = $"data: {{\"type\":\"error\",\"content\":\"服务器异常: {ex.Message}\"}}\n\n" +
+                             $"data: {{\"type\":\"done\"}}\n\n";
+            var errorBytes = Encoding.UTF8.GetBytes(errorEvent);
+            var emem = writer.GetMemory(errorBytes.Length);
+            errorBytes.CopyTo(emem);
+            writer.Advance(errorBytes.Length);
+            await writer.FlushAsync();
+        }
+    }
+
     // ==================== 附件上传 ====================
 
     /// <summary>上传附件</summary>
@@ -383,6 +430,11 @@ public class ChatRequest
     public bool DeepThink { get; set; } = false;
     public string? Attachments { get; set; }
     public string? Model { get; set; }
+}
+
+public class ContinueRequest
+{
+    public string ToolResult { get; set; } = string.Empty;
 }
 
 public class CreateConversationRequest
