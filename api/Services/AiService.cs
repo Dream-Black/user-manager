@@ -15,8 +15,9 @@ public class AiService
     private readonly AppDbContext _context;
     private readonly ILogger<AiService> _logger;
     private readonly IFileLogService _fileLog;
-    private const string DeepSeekBaseUrl = "https://api.deepseek.com/v1";
+    private const string DeepSeekBaseUrl = "https://api.deepseek.com";
     private const int MaxFunctionCallRounds = 5;
+    private static (decimal balance, DateTime fetchedAt)? _balanceCache;
 
     public AiService(IHttpClientFactory httpClientFactory, AppDbContext context, ILogger<AiService> logger, IFileLogService fileLog)
     {
@@ -254,6 +255,7 @@ public class AiService
         string userMessage,
         bool deepThink,
         string? attachmentsJson,
+        string? model,
         Func<string, Task> onEvent)
     {
         var settings = await _context.UserSettings.FirstOrDefaultAsync();
@@ -304,7 +306,7 @@ public class AiService
 
             await StreamDeepSeekResponse(
                 messages, deepThink, settings,
-                conversationId, userMessage, wantsDraft, onEvent);
+                conversationId, userMessage, wantsDraft, model, onEvent);
         }
         catch (Exception ex)
         {
@@ -323,33 +325,39 @@ public class AiService
         int conversationId,
         string userMessage,
         bool wantsDraft,
+        string? model,
         Func<string, Task> onEvent)
     {
         var client = _httpClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromMinutes(30);
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", settings.DeepSeekApiKey);
 
         var tools = BuildFunctionTools();
-        var model = deepThink ? "deepseek-reasoner" : (settings.DeepSeekModel ?? "deepseek-chat");
+        var selectedModel = !string.IsNullOrWhiteSpace(model) ? model : (settings.DeepSeekModel ?? "deepseek-v4-flash");
 
         var requestBody = new Dictionary<string, object>
         {
-            ["model"] = model,
+            ["model"] = selectedModel,
             ["messages"] = messages,
             ["tools"] = tools,
-            ["stream"] = true,
-            ["temperature"] = 0.7,
-            ["max_tokens"] = deepThink ? 4096 : 2048
+            ["stream"] = true
         };
-
-        if (wantsDraft)
-        {
-            requestBody["response_format"] = new { type = "json_object" };
-        }
 
         if (deepThink)
         {
             requestBody["thinking"] = new { type = "enabled" };
+            requestBody["reasoning_effort"] = "high";
+        }
+        else
+        {
+            requestBody["temperature"] = 0.7;
+            requestBody["max_tokens"] = 2048;
+        }
+
+        if (wantsDraft)
+        {
+            requestBody["response_format"] = new { type = "json_object" };
         }
 
         int round = 0;
@@ -363,7 +371,10 @@ public class AiService
             var json = JsonSerializer.Serialize(requestBody);
             await _fileLog.WriteRawAsync("AI", "debug", $"DeepSeek request round={round} body={json}");
             var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = await client.PostAsync($"{DeepSeekBaseUrl}/chat/completions", httpContent);
+            
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{DeepSeekBaseUrl}/chat/completions");
+            request.Content = httpContent;
+            var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -1460,5 +1471,76 @@ public class AiService
     private static string SseDone()
     {
         return $"data: {JsonSerializer.Serialize(new { type = "done" })}\n\n";
+    }
+
+    public async Task<object?> GetBalanceAsync()
+    {
+        var settings = await _context.UserSettings.FirstOrDefaultAsync();
+        if (settings == null || string.IsNullOrEmpty(settings.DeepSeekApiKey))
+        {
+            return new { hasApiKey = false, isAvailable = false, message = "未配置 API Key" };
+        }
+
+        if (_balanceCache != null && (DateTime.UtcNow - _balanceCache.Value.fetchedAt).TotalSeconds < 10)
+        {
+            return new
+            {
+                hasApiKey = true,
+                isAvailable = true,
+                totalBalance = _balanceCache.Value.balance,
+                cached = true
+            };
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", settings.DeepSeekApiKey);
+
+            var response = await client.GetAsync($"{DeepSeekBaseUrl}/user/balance");
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("获取 DeepSeek 余额失败: {StatusCode}", response.StatusCode);
+                return new { hasApiKey = true, isAvailable = false, message = $"API 返回 {response.StatusCode}" };
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var data = JsonNode.Parse(json);
+            if (data == null)
+                return new { hasApiKey = true, isAvailable = false, message = "无法解析余额数据" };
+
+            var isAvailable = data["is_available"]?.GetValue<bool>() ?? false;
+            var balanceInfos = data["balance_infos"]?.AsArray();
+            decimal totalBalance = 0;
+
+            if (balanceInfos != null)
+            {
+                foreach (var info in balanceInfos)
+                {
+                    var balanceStr = info?["total_balance"]?.GetValue<string>();
+                    if (!string.IsNullOrWhiteSpace(balanceStr) && decimal.TryParse(balanceStr, out var parsedBalance))
+                    {
+                        totalBalance += parsedBalance;
+                    }
+                }
+            }
+
+            _balanceCache = (totalBalance, DateTime.UtcNow);
+
+            return new
+            {
+                hasApiKey = true,
+                isAvailable,
+                totalBalance,
+                balanceInfos = balanceInfos?.ToList(),
+                cached = false
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "获取 DeepSeek 余额异常");
+            return new { hasApiKey = true, isAvailable = false, message = $"查询异常: {ex.Message}" };
+        }
     }
 }

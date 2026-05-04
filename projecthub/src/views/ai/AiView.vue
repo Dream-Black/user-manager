@@ -77,10 +77,21 @@
           <span class="current-title">{{ currentTitle }}</span>
         </div>
         <div class="topbar-right">
+          <t-select
+            v-model="selectedModel"
+            :options="modelOptions"
+            size="small"
+            style="width: 130px"
+            placeholder="选择模型"
+          />
           <label class="deep-think-toggle">
             <t-switch v-model="deepThink" size="small" />
             <span class="toggle-label">深度思考</span>
           </label>
+          <div class="balance-badge" :class="balanceClass" :title="balanceTooltip">
+            <span class="balance-dot"></span>
+            <span class="balance-text">{{ balanceText }}</span>
+          </div>
         </div>
       </div>
 
@@ -107,6 +118,7 @@
           :key="msg._id"
           class="message-wrapper"
           :class="msg.role"
+          :data-msg-id="msg._id"
         >
           <div class="message-bubble">
             <div v-if="msg.filesJson && msg.filesJson.length" class="msg-attachments">
@@ -117,7 +129,7 @@
             </div>
 
             <div v-if="msg.reasoningContent" class="reasoning-section">
-              <details class="reasoning-details">
+              <details class="reasoning-details" open>
                 <summary class="reasoning-summary">
                   <Brain :size="14" />
                   <span>思考过程</span>
@@ -258,7 +270,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted, watch, computed } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted, watch, computed } from 'vue'
 import { Plus, Trash2, Send, Paperclip, X, FileText, Image, Brain, Database, Search } from 'lucide-vue-next'
 import { Edit1Icon, RefreshIcon, PinIcon, FolderOffIcon } from 'tdesign-icons-vue-next'
 import { aiService, projectService, taskService } from '@/services/dataService'
@@ -272,6 +284,14 @@ const messages = ref([])
 const currentConvId = ref(null)
 const inputText = ref('')
 const deepThink = ref(false)
+const selectedModel = ref('deepseek-v4-flash')
+const modelOptions = [
+  { label: 'V4 Flash', value: 'deepseek-v4-flash' },
+  { label: 'V4 Pro', value: 'deepseek-v4-pro' }
+]
+const balanceData = ref({ hasApiKey: false, isAvailable: false, totalBalance: 0 })
+const balanceLoading = ref(false)
+let balanceTimer = null
 const streaming = ref(false)
 const streamingMsgId = ref(null)
 const pendingAttachments = ref([])
@@ -289,6 +309,29 @@ const actionFeedbackType = ref('')
 const currentTitle = computed(() => {
   const conv = conversations.value.find(c => c.id === currentConvId.value)
   return conv ? conv.title : '选择一个对话开始'
+})
+
+const balanceText = computed(() => {
+  if (balanceLoading.value) return '查询中...'
+  if (!balanceData.value.hasApiKey) return '未配置'
+  if (!balanceData.value.isAvailable) return '不可用'
+  const b = balanceData.value.totalBalance
+  if (b >= 1) return `¥${b.toFixed(2)}`
+  return `¥${b.toFixed(4)}`
+})
+
+const balanceClass = computed(() => {
+  if (balanceLoading.value) return 'loading'
+  if (!balanceData.value.hasApiKey || !balanceData.value.isAvailable) return 'error'
+  if (balanceData.value.totalBalance < 1) return 'warning'
+  return 'ok'
+})
+
+const balanceTooltip = computed(() => {
+  if (balanceLoading.value) return '正在查询余额...'
+  if (!balanceData.value.hasApiKey) return '请在设置中配置 DeepSeek API Key'
+  if (!balanceData.value.isAvailable) return '余额不足或不可用'
+  return `DeepSeek 余额：¥${balanceData.value.totalBalance}`
 })
 
 const quickPrompts = [
@@ -316,6 +359,15 @@ onMounted(async () => {
   await loadConversations()
   if (conversations.value.length > 0) {
     await switchConversation(conversations.value[0].id)
+  }
+  fetchBalance()
+  balanceTimer = setInterval(fetchBalance, 10000)
+})
+
+onUnmounted(() => {
+  if (balanceTimer) {
+    clearInterval(balanceTimer)
+    balanceTimer = null
   }
 })
 
@@ -423,6 +475,8 @@ async function sendMessage() {
   const userFiles = [...pendingAttachments.value]
   const isEditing = !!editingMessage.value?.id
 
+  let targetMsgId = null
+
   if (isEditing) {
     const editingMsgIndex = messages.value.findIndex(m => m._id === editingMessage.value._id)
     if (editingMsgIndex === -1) {
@@ -430,6 +484,7 @@ async function sendMessage() {
       return
     }
 
+    targetMsgId = editingMessage.value._id
     messages.value = messages.value.slice(0, editingMsgIndex + 1)
     messages.value[editingMsgIndex] = {
       ...messages.value[editingMsgIndex],
@@ -446,8 +501,10 @@ async function sendMessage() {
     }
   } else {
     // 添加用户消息到本地
+    const userMsgId = 'user_' + Date.now()
+    targetMsgId = userMsgId
     const userMsg = {
-      _id: 'user_' + Date.now(),
+      _id: userMsgId,
       role: 'user',
       content: text,
       filesJson: [...userFiles],
@@ -465,7 +522,14 @@ async function sendMessage() {
   pendingAttachments.value = []
 
   await nextTick()
-  scrollToBottom()
+  // 滚动到目标消息顶部
+  const el = messagesContainer.value
+  if (el && targetMsgId) {
+    const targetEl = el.querySelector('[data-msg-id="' + targetMsgId + '"]')
+    if (targetEl) {
+      el.scrollTop = targetEl.offsetTop
+    }
+  }
 
   // 创建 AI 占位消息
   const aiMsgId = 'ai_' + Date.now()
@@ -486,7 +550,8 @@ async function sendMessage() {
       currentConvId.value,
       text,
       deepThink.value,
-      userFiles.length > 0 ? userFiles.map(a => ({ name: a.name, type: a.type })) : null
+      userFiles.length > 0 ? userFiles.map(a => ({ name: a.name, type: a.type })) : null,
+      selectedModel.value
     )
 
     if (!response.ok) {
@@ -496,6 +561,29 @@ async function sendMessage() {
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+
+    let reasoningBuffer = ''
+    let contentBuffer = ''
+    let scrollTimer = null
+    let hasStartedContent = false
+
+    const flushUpdate = () => {
+      const idx = messages.value.findIndex(m => m._id === aiMsgId)
+      if (idx === -1) return
+      const updated = { ...messages.value[idx], content: contentBuffer, reasoningContent: reasoningBuffer }
+      messages.value.splice(idx, 1, updated)
+    }
+
+    const scheduleScroll = () => {
+      if (scrollTimer) return
+      scrollTimer = setTimeout(() => {
+        scrollTimer = null
+        // 只有还没开始正文时才持续滚到底
+        if (!hasStartedContent) {
+          scrollToBottom()
+        }
+      }, 16)
+    }
 
     while (true) {
       const { done, value } = await reader.read()
@@ -519,31 +607,58 @@ async function sendMessage() {
         const data = safeParse(dataStr)
         if (!data) continue
 
-        const msg = messages.value.find(m => m._id === aiMsgId)
-        if (!msg) continue
-
         switch (data.type) {
           case 'content':
-            msg.content += data.content
+            contentBuffer += data.content
+            flushUpdate()
+            // 如果是第一次收到正文
+            if (!hasStartedContent && contentBuffer.trim()) {
+              hasStartedContent = true
+              await nextTick()
+              // 折叠思考内容
+              const el = messagesContainer.value
+              if (el) {
+                const detailsEl = el.querySelector(`[data-msg-id="${aiMsgId}"] .reasoning-details`)
+                if (detailsEl) {
+                  detailsEl.removeAttribute('open')
+                }
+                // 滚动到正文开头（顶部留30px）
+                await nextTick()
+                const contentEl = el.querySelector(`[data-msg-id="${aiMsgId}"] .msg-content`)
+                if (contentEl) {
+                  el.scrollTop = contentEl.offsetTop - 30
+                }
+              }
+            }
+            scheduleScroll()
             break
           case 'reasoning':
-            msg.reasoningContent += data.content
+            reasoningBuffer += data.content
+            flushUpdate()
             break
           case 'tool_call':
-            msg.content += '\n\n🔍 *正在查询数据库...*'
+            contentBuffer += '\n\n🔍 *正在查询数据库...*'
+            flushUpdate()
+            scheduleScroll()
             break
           case 'tool_result':
-            msg.content = msg.content.replace(/\n\n🔍 \*正在查询数据库...\*/g, '')
+            contentBuffer = contentBuffer.replace(/\n\n🔍 \*正在查询数据库...\*/g, '')
+            flushUpdate()
             break
           case 'error':
-            msg.content = data.content
+            contentBuffer = data.content
+            flushUpdate()
+            scheduleScroll()
             break
           case 'done':
             break
         }
-        await nextTick()
-        scrollToBottom()
       }
+    }
+
+    if (scrollTimer) {
+      clearTimeout(scrollTimer)
+      scrollTimer = null
     }
   } catch (e) {
     const msg = messages.value.find(m => m._id === aiMsgId)
@@ -854,6 +969,19 @@ async function regenerateFromMessage(msg) {
     await reloadMessages()
   } catch (e) {
     console.error('重新生成失败:', e)
+  }
+}
+
+async function fetchBalance() {
+  balanceLoading.value = true
+  try {
+    const data = await aiService.getBalance()
+    balanceData.value = data || { hasApiKey: false, isAvailable: false, totalBalance: 0 }
+  } catch (e) {
+    console.error('获取余额失败:', e)
+    balanceData.value = { hasApiKey: false, isAvailable: false, totalBalance: 0 }
+  } finally {
+    balanceLoading.value = false
   }
 }
 
@@ -1700,5 +1828,66 @@ function safeParse(str) {
   .message-bubble {
     max-width: 100%;
   }
+}
+
+.balance-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: var(--bg-color-secondary);
+  border: 1px solid var(--border-light);
+  cursor: default;
+  transition: all var(--transition-fast);
+}
+
+.balance-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.balance-text {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+
+.balance-badge.ok .balance-dot {
+  background: var(--success-color);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+.balance-badge.ok .balance-text {
+  color: var(--success-color);
+}
+
+.balance-badge.warning .balance-dot {
+  background: var(--warning-color);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+  animation: dot-pulse 1.4s infinite;
+}
+
+.balance-badge.warning .balance-text {
+  color: var(--warning-color);
+}
+
+.balance-badge.error .balance-dot {
+  background: var(--text-tertiary);
+}
+
+.balance-badge.error .balance-text {
+  color: var(--text-tertiary);
+}
+
+.balance-badge.loading .balance-dot {
+  background: var(--primary-color);
+  animation: dot-pulse 1.4s infinite;
+}
+
+.balance-badge.loading .balance-text {
+  color: var(--primary-color);
 }
 </style>

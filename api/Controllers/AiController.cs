@@ -23,6 +23,40 @@ public class AiController : ControllerBase
         _logger = logger;
     }
 
+    // ==================== 测试 SSE ====================
+
+    /// <summary>最简单的 SSE 测试接口，直接写 PipeWriter</summary>
+    [HttpGet("test-sse")]
+    public async Task TestSse()
+    {
+        Response.ContentType = "text/event-stream";
+        Response.Headers["Cache-Control"] = "no-cache";
+
+        var bodyFeature = HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>();
+        bodyFeature?.DisableBuffering();
+        
+        await Response.StartAsync();
+
+        var writer = Response.BodyWriter;
+
+        for (int i = 1; i <= 10; i++)
+        {
+            var msg = $"data: {{\"type\":\"content\",\"content\":\"第{i}行\"}}\n\n";
+            var bytes = Encoding.UTF8.GetBytes(msg);
+            var mem = writer.GetMemory(bytes.Length);
+            bytes.CopyTo(mem);
+            writer.Advance(bytes.Length);
+            await writer.FlushAsync();
+            await Task.Delay(1000);
+        }
+
+        var done = "data: {\"type\":\"done\"}\n\n"u8.ToArray();
+        var doneMem = writer.GetMemory(done.Length);
+        done.CopyTo(doneMem);
+        writer.Advance(done.Length);
+        await writer.FlushAsync();
+    }
+
     // ==================== 对话管理 ====================
 
     /// <summary>获取所有对话列表</summary>
@@ -199,12 +233,15 @@ public class AiController : ControllerBase
             return;
         }
 
-        Response.Headers.Append("Content-Type", "text/event-stream");
-        Response.Headers.Append("Cache-Control", "no-cache");
-        Response.Headers.Append("Connection", "keep-alive");
-        Response.Headers.Append("X-Accel-Buffering", "no");
+        Response.ContentType = "text/event-stream";
+        Response.Headers["Cache-Control"] = "no-cache";
 
-        var writer = Response.BodyWriter.AsStream();
+        HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>()?.DisableBuffering();
+        
+        await Response.StartAsync();
+
+        var writer = Response.BodyWriter;
+
         try
         {
             await _aiService.ChatStreamAsync(
@@ -212,10 +249,13 @@ public class AiController : ControllerBase
                 request.Message,
                 request.DeepThink,
                 request.Attachments,
+                request.Model,
                 async (sseLine) =>
                 {
                     var bytes = Encoding.UTF8.GetBytes(sseLine);
-                    await writer.WriteAsync(bytes);
+                    var mem = writer.GetMemory(bytes.Length);
+                    bytes.CopyTo(mem);
+                    writer.Advance(bytes.Length);
                     await writer.FlushAsync();
                 });
         }
@@ -225,7 +265,9 @@ public class AiController : ControllerBase
             var errorEvent = $"data: {{\"type\":\"error\",\"content\":\"服务器异常: {ex.Message}\"}}\n\n" +
                              $"data: {{\"type\":\"done\"}}\n\n";
             var errorBytes = Encoding.UTF8.GetBytes(errorEvent);
-            await writer.WriteAsync(errorBytes);
+            var emem = writer.GetMemory(errorBytes.Length);
+            errorBytes.CopyTo(emem);
+            writer.Advance(errorBytes.Length);
             await writer.FlushAsync();
         }
     }
@@ -285,6 +327,16 @@ public class AiController : ControllerBase
         }
     }
 
+    // ==================== 余额查询 ====================
+
+    /// <summary>查询 DeepSeek 账户余额</summary>
+    [HttpGet("balance")]
+    public async Task<IActionResult> GetBalance()
+    {
+        var result = await _aiService.GetBalanceAsync();
+        return Ok(result);
+    }
+
     // ==================== 设置 ====================
 
     /// <summary>获取AI设置</summary>
@@ -329,7 +381,8 @@ public class ChatRequest
 {
     public string Message { get; set; } = string.Empty;
     public bool DeepThink { get; set; } = false;
-    public string? Attachments { get; set; } // JSON 字符串
+    public string? Attachments { get; set; }
+    public string? Model { get; set; }
 }
 
 public class CreateConversationRequest

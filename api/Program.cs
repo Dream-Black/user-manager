@@ -5,6 +5,25 @@ using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 配置 Kestrel，取消聊天接口的超时限制
+builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(options =>
+{
+    options.Limits.MinRequestBodyDataRate = null;
+    options.Limits.MinResponseDataRate = null;
+    options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(30);
+    options.Limits.RequestHeadersTimeout = TimeSpan.FromMinutes(2);
+});
+
+// 配置请求超时，默认30分钟
+builder.Services.AddRequestTimeouts(options =>
+{
+    options.DefaultPolicy = new Microsoft.AspNetCore.Http.Timeouts.RequestTimeoutPolicy
+    {
+        Timeout = TimeSpan.FromMinutes(30)
+    };
+});
+
 var isDevelopment = builder.Environment.IsDevelopment();
 
 // 配置 MySQL 数据库
@@ -13,13 +32,20 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
 
-// 注册 HttpClient 和 AI 服务
-builder.Services.AddHttpClient();
+// 注册 HttpClient 和 AI 服务，延长超时时间到 10 分钟
+builder.Services.AddHttpClient("", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(10);
+});
 builder.Services.AddScoped<AiService>();
 builder.Services.AddScoped<IFileLogService, FileLogService>(); // 所有环境都需要
 
 // 配置控制器 + JSON选项
-builder.Services.AddControllers()
+builder.Services.AddControllers(options =>
+{
+    options.SuppressAsyncSuffixInActionNames = false;
+    options.MaxModelBindingRecursionDepth = 32;
+})
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
@@ -513,6 +539,8 @@ using (var scope = app.Services.CreateScope())
         logger.LogError(ex, "数据库结构同步失败");
     }
 }
+
+app.UseRequestTimeouts();
 
 app.UseSwagger(options =>
 {

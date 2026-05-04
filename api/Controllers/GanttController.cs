@@ -19,6 +19,7 @@ public class GanttController : ControllerBase
     /// <summary>获取甘特图数据</summary>
     /// <param name="days">时间范围天数，默认30天</param>
     /// <param name="startDate">开始日期</param>
+    [HttpGet]
     public async Task<IActionResult> GetGanttData([FromQuery] int days = 30, [FromQuery] DateTime? startDate = null)
     {
         var baseDate = startDate ?? DateTime.Today.AddDays(-7); // 默认过去7天

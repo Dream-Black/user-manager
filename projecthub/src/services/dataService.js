@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 10000,
+  timeout: 30000, // 30秒，普通接口超时
   headers: {
     'Content-Type': 'application/json'
   }
@@ -226,18 +226,23 @@ export const aiService = {
   },
 
   // 流式聊天（返回 fetch Response 用于读取 SSE）
-  chatStream: async (conversationId, message, deepThink, attachments) => {
+  chatStream: async (conversationId, message, deepThink, attachments, model) => {
     const response = await fetch(`/api/ai/conversations/${conversationId}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
         deepThink,
+        model,
         attachments: attachments ? JSON.stringify(attachments) : null
       })
     })
 
     return response
+  },
+
+  getBalance: async () => {
+    return api.get('/ai/balance')
   }
 }
 
