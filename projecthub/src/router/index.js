@@ -4,7 +4,7 @@ import ProjectList from '../views/projects/ProjectList.vue'
 import ProjectDetail from '../views/projects/ProjectDetail.vue'
 import TaskList from '../views/tasks/TaskList.vue'
 import GanttView from '../views/gantt/GanttView.vue'
-import AiView from '../views/ai/AiView.vue'
+import AiView from '../views/ai-refactor/AiView.vue'
 import SettingsView from '../views/settings/SettingsView.vue'
 import LoginView from '../views/LoginView.vue'
 

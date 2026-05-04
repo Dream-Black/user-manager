@@ -1,5 +1,6 @@
 using ProjectHub.Api.Data;
 using ProjectHub.Api.Services;
+using ProjectHub.Api.Services.Ai;
 using ProjectHub.Api.Filters;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -40,7 +41,13 @@ builder.Services.AddHttpClient("", client =>
 {
     client.Timeout = TimeSpan.FromMinutes(10);
 });
-builder.Services.AddScoped<AiService>();
+builder.Services.AddScoped<AiConversationService>();
+builder.Services.AddScoped<AiDraftService>();
+builder.Services.AddScoped<AiToolService>();
+builder.Services.AddScoped<AiStreamService>();
+builder.Services.AddScoped<AiPromptBuilder>();
+builder.Services.AddScoped<AiSettingsService>();
+builder.Services.AddScoped<AiBalanceService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<IFileLogService, FileLogService>(); // 所有环境都需要
 

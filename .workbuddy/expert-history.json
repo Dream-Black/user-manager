@@ -222,7 +222,18 @@
         "usedAt": 1777129530908,
         "industryId": "02-Engineering"
       }
+    ],
+    "068b5068711c4e87be00828f367a48dd": [
+      {
+        "expertId": "FrontendDeveloper",
+        "name": "像素匠",
+        "profession": "前端开发工程师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/FrontendDeveloper/FrontendDeveloper.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/FrontendDeveloper/FrontendDeveloper_zh.md",
+        "usedAt": 1777923045227,
+        "industryId": "02-Engineering"
+      }
     ]
   },
-  "lastUpdated": 1777131529552
+  "lastUpdated": 1777924283820
 }
