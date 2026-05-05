@@ -545,8 +545,38 @@ using (var scope = app.Services.CreateScope())
                 logger.LogInformation("✓ ChatMessages.FilesJson 列已添加");
             }
         }
-        
-        // 18. 检查并添加 Users 表的新列（兼容旧代码）
+
+        // 19. 创建 Notes 表（如果不存在）
+        if (!TableExists("Notes"))
+        {
+            command.CommandText = @"
+                CREATE TABLE Notes (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Title VARCHAR(200) NOT NULL,
+                    Content LONGTEXT NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Notes 表已创建");
+        }
+
+        // 20. 创建 NoteTags 表（如果不存在）
+        if (!TableExists("NoteTags"))
+        {
+            command.CommandText = @"
+                CREATE TABLE NoteTags (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    NoteId INT NOT NULL,
+                    TagId VARCHAR(50) NOT NULL,
+                    FOREIGN KEY (NoteId) REFERENCES Notes(Id) ON DELETE CASCADE,
+                    UNIQUE KEY UK_NoteId_TagId (NoteId, TagId)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ NoteTags 表已创建");
+        }
+
+        // 21. 检查并添加 Users 表的新列（兼容旧代码）
         if (!ColumnExists("Users", "Theme"))
         {
             command.CommandText = "ALTER TABLE Users ADD COLUMN Theme VARCHAR(20) NULL DEFAULT 'light'";
@@ -586,7 +616,7 @@ using (var scope = app.Services.CreateScope())
         command.ExecuteNonQuery();
         
         connection.Close();
-        logger.LogInformation("✓ 数据库结构同步完成 - 共 17 个表已检查/创建");
+        logger.LogInformation("✓ 数据库结构同步完成 - 共 19 个表已检查/创建");
     }
     catch (Exception ex)
     {

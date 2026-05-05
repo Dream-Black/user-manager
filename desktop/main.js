@@ -36,7 +36,7 @@ function loadEnvConfig() {
 const envConfig = loadEnvConfig();
 
 // 服务器地址：从 .env 或环境变量读取
-const SERVER_URL = envConfig.SERVER_URL || process.env.SERVER_URL || 'http://localhost:3000';
+const SERVER_URL = envConfig.SERVER_URL || process.env.SERVER_URL || 'http://43.132.155.29';
 
 // Python Proxy 固定地址
 const PROXY_URL = 'http://localhost:6789';

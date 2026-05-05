@@ -84,6 +84,7 @@ import {
   ChartRingIcon,
   RootListIcon,
   RobotIcon,
+  FileIcon,
 } from 'tdesign-icons-vue-next'
 import { useLayoutState } from '@/composables/useLayoutState'
 
@@ -107,6 +108,7 @@ const navGroups = [
     title: '内容管理',
     items: [
       { path: '/resources', title: '资源管理', icon: RootListIcon },
+      { path: '/notes', title: '笔记', icon: FileIcon },
     ],
   },
   {

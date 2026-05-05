@@ -319,6 +319,33 @@ export const ganttService = {
     }
 }
 
+// ============ 笔记相关 ============
+export const noteService = {
+    getAll: async (params = {}) => {
+        return api.get('/notes', { params })
+    },
+
+    getById: async (id) => {
+        return api.get(`/notes/${id}`)
+    },
+
+    getTags: async () => {
+        return api.get('/notes/tags')
+    },
+
+    create: async (data) => {
+        return api.post('/notes', data)
+    },
+
+    update: async (id, data) => {
+        return api.put(`/notes/${id}`, data)
+    },
+
+    delete: async (id) => {
+        return api.delete(`/notes/${id}`)
+    }
+}
+
 // ============ 终端执行相关（桌面端） ============
 export const terminalService = {
     // 检测是否在桌面端环境

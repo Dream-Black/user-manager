@@ -34,6 +34,10 @@ public class AppDbContext : DbContext
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
+    // 笔记模块
+    public DbSet<Note> Notes => Set<Note>();
+    public DbSet<NoteTag> NoteTags => Set<NoteTag>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -220,6 +224,28 @@ public class AppDbContext : DbContext
             entity.HasOne(m => m.Conversation)
                   .WithMany(c => c.Messages)
                   .HasForeignKey(m => m.ConversationId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ===== 笔记模块配置 =====
+
+        // Note 配置
+        modelBuilder.Entity<Note>(entity =>
+        {
+            entity.HasIndex(e => e.UpdatedAt);
+            entity.HasIndex(e => e.CreatedAt);
+        });
+
+        // NoteTag 配置
+        modelBuilder.Entity<NoteTag>(entity =>
+        {
+            entity.HasIndex(e => e.NoteId);
+            entity.HasIndex(e => e.TagId);
+            entity.HasIndex(e => new { e.NoteId, e.TagId }).IsUnique();
+
+            entity.HasOne(nt => nt.Note)
+                  .WithMany(n => n.Tags)
+                  .HasForeignKey(nt => nt.NoteId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }

@@ -7,6 +7,8 @@ import GanttView from '../views/gantt/GanttView.vue'
 import AiView from '../views/ai-refactor/AiView.vue'
 import SettingsView from '../views/settings/SettingsView.vue'
 import LoginView from '../views/LoginView.vue'
+import NotesView from '../views/notes/NotesView.vue'
+import NoteDetailView from '../views/notes/NoteDetailView.vue'
 
 const routes = [
   { path: '/login', name: 'Login', component: LoginView, meta: { layout: 'blank', title: '登录' } },
@@ -55,6 +57,18 @@ const routes = [
     name: 'Settings',
     component: SettingsView,
     meta: { title: '个人设置', requiresAuth: true }
+  },
+  {
+    path: '/notes',
+    name: 'Notes',
+    component: NotesView,
+    meta: { title: '笔记', requiresAuth: true }
+  },
+  {
+    path: '/notes/:id',
+    name: 'NoteDetail',
+    component: NoteDetailView,
+    meta: { title: '笔记详情', requiresAuth: true }
   },
   {
     path: '/resources',

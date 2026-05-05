@@ -10,7 +10,7 @@ import uvicorn
 import subprocess
 import shlex
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,6 +35,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_private_network_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
 
 
 # ==================== 系统接口 ====================
@@ -169,7 +176,8 @@ async def read_file(path: str = Query(..., description="文件路径")):
         headers={
             "Content-Length": str(file_size),
             "Content-Disposition": f'inline; filename="{os.path.basename(decoded_path)}"',
-            "Cache-Control": "public, max-age=3600"
+            "Cache-Control": "public, max-age=3600",
+            "Access-Control-Allow-Private-Network": "true"
         }
     )
 
