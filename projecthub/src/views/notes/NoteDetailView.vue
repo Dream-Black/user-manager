@@ -178,7 +178,6 @@ onMounted(() => {
 
 <style scoped>
 .note-detail-page {
-  max-width: 900px;
   margin: 0 auto;
   padding: 24px;
 }

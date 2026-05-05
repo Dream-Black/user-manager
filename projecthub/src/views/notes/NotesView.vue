@@ -251,7 +251,6 @@ onMounted(() => {
 
 <style scoped>
 .notes-page {
-  max-width: 1200px;
   margin: 0 auto;
 }
 

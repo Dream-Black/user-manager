@@ -2,6 +2,7 @@ using ProjectHub.Api.Data;
 using ProjectHub.Api.Services;
 using ProjectHub.Api.Services.Ai;
 using ProjectHub.Api.Filters;
+using ProjectHub.Api.BackgroundServices;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -50,6 +51,9 @@ builder.Services.AddScoped<AiSettingsService>();
 builder.Services.AddScoped<AiBalanceService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<IFileLogService, FileLogService>(); // 所有环境都需要
+builder.Services.AddScoped<ScheduleService>();
+builder.Services.AddSingleton<SseService>();
+builder.Services.AddHostedService<ReminderBackgroundService>();
 
 // 配置控制器 + JSON选项
 builder.Services.AddControllers(options =>
@@ -576,7 +580,68 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✓ NoteTags 表已创建");
         }
 
-        // 21. 检查并添加 Users 表的新列（兼容旧代码）
+        // 21. 创建 Schedules 表（如果不存在）
+        if (!TableExists("Schedules"))
+        {
+            command.CommandText = @"
+                CREATE TABLE Schedules (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Title VARCHAR(200) NOT NULL,
+                    Content VARCHAR(2000) NULL,
+                    StartDate DATETIME(6) NOT NULL,
+                    EndDate DATETIME(6) NOT NULL,
+                    RepeatMode VARCHAR(20) NOT NULL DEFAULT 'week',
+                    RepeatDays VARCHAR(500) NOT NULL,
+                    StartTime VARCHAR(5) NOT NULL DEFAULT '09:00',
+                    EndTime VARCHAR(5) NOT NULL DEFAULT '10:00',
+                    ReminderEnabled TINYINT(1) NOT NULL DEFAULT 0,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ Schedules 表已创建");
+        }
+
+        // 22. 创建 ScheduleDays 表（如果不存在）
+        if (!TableExists("ScheduleDays"))
+        {
+            command.CommandText = @"
+                CREATE TABLE ScheduleDays (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    ScheduleId INT NOT NULL,
+                    DayDate DATETIME(6) NOT NULL,
+                    Content VARCHAR(500) NULL,
+                    Status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    SkipReason VARCHAR(20) NULL,
+                    CompletedAt DATETIME(6) NULL,
+                    SkippedAt DATETIME(6) NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (ScheduleId) REFERENCES Schedules(Id) ON DELETE CASCADE,
+                    UNIQUE KEY UK_ScheduleId_DayDate (ScheduleId, DayDate)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ ScheduleDays 表已创建");
+        }
+
+        // 23. 创建 ScheduleReminders 表（如果不存在）
+        if (!TableExists("ScheduleReminders"))
+        {
+            command.CommandText = @"
+                CREATE TABLE ScheduleReminders (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    ScheduleId INT NOT NULL,
+                    ReminderDate DATETIME(6) NOT NULL,
+                    SentAt DATETIME(6) NOT NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (ScheduleId) REFERENCES Schedules(Id) ON DELETE CASCADE,
+                    UNIQUE KEY UK_ScheduleId_ReminderDate (ScheduleId, ReminderDate)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ ScheduleReminders 表已创建");
+        }
+
+        // 24. 检查并添加 Users 表的新列（兼容旧代码）
         if (!ColumnExists("Users", "Theme"))
         {
             command.CommandText = "ALTER TABLE Users ADD COLUMN Theme VARCHAR(20) NULL DEFAULT 'light'";

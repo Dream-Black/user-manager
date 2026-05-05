@@ -38,6 +38,11 @@ public class AppDbContext : DbContext
     public DbSet<Note> Notes => Set<Note>();
     public DbSet<NoteTag> NoteTags => Set<NoteTag>();
 
+    // 日程模块
+    public DbSet<Schedule> Schedules => Set<Schedule>();
+    public DbSet<ScheduleDay> ScheduleDays => Set<ScheduleDay>();
+    public DbSet<ScheduleReminder> ScheduleReminders => Set<ScheduleReminder>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -246,6 +251,44 @@ public class AppDbContext : DbContext
             entity.HasOne(nt => nt.Note)
                   .WithMany(n => n.Tags)
                   .HasForeignKey(nt => nt.NoteId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ===== 日程模块配置 =====
+
+        // Schedule 配置
+        modelBuilder.Entity<Schedule>(entity =>
+        {
+            entity.HasIndex(e => e.StartDate);
+            entity.HasIndex(e => e.EndDate);
+            entity.HasIndex(e => e.ReminderEnabled);
+            entity.HasIndex(e => e.CreatedAt);
+        });
+
+        // ScheduleDay 配置
+        modelBuilder.Entity<ScheduleDay>(entity =>
+        {
+            entity.HasIndex(e => e.ScheduleId);
+            entity.HasIndex(e => e.DayDate);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => new { e.ScheduleId, e.DayDate }).IsUnique();
+
+            entity.HasOne(sd => sd.Schedule)
+                  .WithMany(s => s.ScheduleDays)
+                  .HasForeignKey(sd => sd.ScheduleId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ScheduleReminder 配置
+        modelBuilder.Entity<ScheduleReminder>(entity =>
+        {
+            entity.HasIndex(e => e.ScheduleId);
+            entity.HasIndex(e => e.ReminderDate);
+            entity.HasIndex(e => new { e.ScheduleId, e.ReminderDate }).IsUnique();
+
+            entity.HasOne(sr => sr.Schedule)
+                  .WithMany(s => s.ScheduleReminders)
+                  .HasForeignKey(sr => sr.ScheduleId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }

@@ -4,6 +4,8 @@ import ProjectList from '../views/projects/ProjectList.vue'
 import ProjectDetail from '../views/projects/ProjectDetail.vue'
 import TaskList from '../views/tasks/TaskList.vue'
 import GanttView from '../views/gantt/GanttView.vue'
+import ScheduleManagementView from '../views/daily/ScheduleManagementView.vue'
+import ScheduleDetailView from '../views/daily/ScheduleDetailView.vue'
 import AiView from '../views/ai-refactor/AiView.vue'
 import SettingsView from '../views/settings/SettingsView.vue'
 import LoginView from '../views/LoginView.vue'
@@ -45,6 +47,18 @@ const routes = [
     name: 'Gantt',
     component: GanttView,
     meta: { title: '甘特图', requiresAuth: true }
+  },
+  {
+    path: '/schedule',
+    name: 'Schedule',
+    component: ScheduleManagementView,
+    meta: { title: '日程管理', requiresAuth: true }
+  },
+  {
+    path: '/schedule/:id',
+    name: 'ScheduleDetail',
+    component: ScheduleDetailView,
+    meta: { title: '日程详情', requiresAuth: true }
   },
   {
     path: '/ai',

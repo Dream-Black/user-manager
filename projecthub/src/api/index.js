@@ -69,4 +69,20 @@ export const ganttApi = {
   getData: (params = {}) => api.get('/gantt', { params })
 }
 
+// 日程 API
+export const scheduleApi = {
+  list: () => api.get('/schedules'),
+  get: (id) => api.get(`/schedules/${id}`),
+  create: (data) => api.post('/schedules', data),
+  update: (id, data) => api.put(`/schedules/${id}`, data),
+  delete: (id) => api.delete(`/schedules/${id}`),
+  getDays: (scheduleId) => api.get(`/schedules/${scheduleId}/days`),
+  upsertDay: (scheduleId, data) => api.post(`/schedules/${scheduleId}/days`, data),
+  updateDay: (scheduleId, dayDate, data) => api.put(`/schedules/${scheduleId}/days/${dayDate}`, data),
+  deleteDay: (scheduleId, dayId) => api.delete(`/schedules/${scheduleId}/days/${dayId}`),
+  generateDays: (scheduleId, data) => api.post(`/schedules/${scheduleId}/generate-days`, data),
+  updateDayContent: (scheduleId, dayDate, content) => api.put(`/schedules/${scheduleId}/days/${dayDate}/content`, { content }),
+  updateDayStatus: (scheduleId, dayDate, status, skipReason) => api.put(`/schedules/${scheduleId}/days/${dayDate}/status`, { status, skipReason })
+}
+
 export default api

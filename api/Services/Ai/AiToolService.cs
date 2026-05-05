@@ -88,6 +88,25 @@ public class AiToolService
                 type = "function",
                 function = new
                 {
+                    name = "search_notes",
+                    description = "搜索用户的笔记内容，支持按关键词、标签进行筛选。返回笔记列表包含标题、内容摘要、标签和更新时间。",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            keyword = new { type = "string", description = "搜索关键词，用于匹配笔记标题和内容" },
+                            tag = new { type = "string", description = "标签筛选，只返回包含该标签的笔记" }
+                        },
+                        required = Array.Empty<string>()
+                    }
+                }
+            },
+            new
+            {
+                type = "function",
+                function = new
+                {
                     name = "get_statistics",
                     description = "查询系统统计数据：任务总数、完成率、各状态分布、各项目进度等。",
                     parameters = new { type = "object", properties = new { }, required = Array.Empty<string>() }
@@ -125,6 +144,7 @@ public class AiToolService
                 "get_projects" => await GetProjectsAsync(arguments),
                 "get_task_detail" => await GetTaskDetailAsync(arguments),
                 "get_resource_paths" => await GetResourcePathsAsync(arguments),
+                "search_notes" => await SearchNotesAsync(arguments),
                 "get_statistics" => await GetStatisticsAsync(),
                 "get_terminal_usage_guide" => await GetTerminalUsageGuideAsync(arguments),
                 _ => JsonSerializer.Serialize(new { error = $"未知工具: {functionName}" })
@@ -176,6 +196,38 @@ public class AiToolService
         }
         var paths = await query.OrderByDescending(r => r.CreatedAt).Select(r => new { r.Id, r.ComputerId, ComputerName = r.Computer != null ? r.Computer.Name : null, r.Type, r.Path, r.IsEnabled, r.CreatedAt }).ToListAsync();
         return JsonSerializer.Serialize(paths);
+    }
+
+    private async Task<string> SearchNotesAsync(string arguments)
+    {
+        var args = JsonSerializer.Deserialize<Dictionary<string, string>>(arguments);
+        var keyword = args?.ContainsKey("keyword") == true ? args["keyword"] : null;
+        var tag = args?.ContainsKey("tag") == true ? args["tag"] : null;
+
+        var query = _context.Notes.Include(n => n.Tags).AsQueryable();
+
+        if (!string.IsNullOrEmpty(tag))
+        {
+            query = query.Where(n => n.Tags.Any(t => t.TagId == tag));
+        }
+
+        if (!string.IsNullOrEmpty(keyword))
+        {
+            query = query.Where(n => (n.Title != null && n.Title.Contains(keyword)) || (n.Content != null && n.Content.Contains(keyword)));
+        }
+
+        var notes = await query.OrderByDescending(n => n.UpdatedAt)
+            .Select(n => new
+            {
+                n.Id,
+                n.Title,
+                ContentPreview = n.Content != null && n.Content.Length > 200 ? n.Content.Substring(0, 200) + "..." : n.Content ?? "",
+                Tags = n.Tags.Select(t => t.TagId).ToList(),
+                n.UpdatedAt
+            })
+            .ToListAsync();
+
+        return JsonSerializer.Serialize(new { notes, count = notes.Count });
     }
 
     private async Task<string> GetStatisticsAsync()

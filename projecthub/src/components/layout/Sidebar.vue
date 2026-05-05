@@ -75,7 +75,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   DashboardIcon,
@@ -85,12 +85,23 @@ import {
   RootListIcon,
   RobotIcon,
   FileIcon,
+  CalendarIcon,
 } from 'tdesign-icons-vue-next'
 import { useLayoutState } from '@/composables/useLayoutState'
+import { useScheduleSSE } from '@/composables/useScheduleSSE'
 
 const route = useRoute()
 const router = useRouter()
 const { user, isSidebarCollapsed, toggleSidebarCollapsed } = useLayoutState()
+const { connect, disconnect } = useScheduleSSE()
+
+onMounted(() => {
+  connect()
+})
+
+onBeforeUnmount(() => {
+  disconnect()
+})
 
 const isCollapsed = computed(() => isSidebarCollapsed.value)
 
@@ -102,6 +113,7 @@ const navGroups = [
       { path: '/projects', title: '项目管理', icon: FolderOpenIcon },
       { path: '/tasks', title: '任务中心', icon: TaskIcon },
       { path: '/gantt', title: '甘特图', icon: ChartRingIcon },
+      { path: '/schedule', title: '日程管理', icon: CalendarIcon },
     ],
   },
   {

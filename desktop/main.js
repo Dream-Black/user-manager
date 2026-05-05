@@ -4,7 +4,7 @@
 // 功能：窗口管理、IPC Bridge（转发请求到本地Python Proxy）、更新检查
 // ============================================================
 
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -559,6 +559,56 @@ ipcMain.handle('proxy-start', async () => {
   }
   startPythonProxy();
   return { success: true, action: 'started' };
+});
+
+/**
+ * IPC Handler: 显示桌面通知
+ */
+ipcMain.handle('show-notification', async (event, { title, body, scheduleId }) => {
+  if (!Notification.isSupported()) {
+    log('Notification', '系统不支持通知功能', 'WARN');
+    return { success: false, error: 'Notification not supported' };
+  }
+
+  const notification = new Notification({
+    title: title || 'AI Claw',
+    body: body || '',
+    silent: false,
+    timeoutType: 'default'
+  });
+
+  notification.on('click', () => {
+    log('Notification', `用户点击了通知，日程ID: ${scheduleId}`);
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.focus();
+      // 直接通过 URL 导航
+      if (scheduleId) {
+        // 获取当前 URL，然后替换路由
+        const currentUrl = mainWindow.webContents.getURL();
+        if (currentUrl) {
+          const url = new URL(currentUrl);
+          url.pathname = `/schedule/${scheduleId}`;
+          mainWindow.loadURL(url.toString());
+        } else {
+          // 如果获取 URL 失败，直接拼接
+          const targetUrl = `${SERVER_URL}/schedule/${scheduleId}`;
+          mainWindow.loadURL(targetUrl);
+        }
+      }
+    }
+  });
+
+  notification.on('close', () => {
+    log('Notification', '通知已关闭');
+  });
+
+  notification.show();
+  log('Notification', `显示通知: ${title} - ${body}`);
+
+  return { success: true };
 });
 
 // ============================================================

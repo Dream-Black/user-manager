@@ -87,6 +87,18 @@ contextBridge.exposeInMainWorld('localBridge', {
    */
   getProxyStatus: () => {
     return ipcRenderer.invoke('proxy-status');
+  },
+
+  /**
+   * 显示桌面通知
+   * @param {object} options - 通知选项
+   * @param {string} options.title - 通知标题
+   * @param {string} options.body - 通知内容
+   * @param {number} options.scheduleId - 日程ID（点击时传递）
+   * @returns {Promise<{ success: boolean }>}
+   */
+  showNotification: (options) => {
+    return ipcRenderer.invoke('show-notification', options);
   }
 });
 
