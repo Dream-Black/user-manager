@@ -85,4 +85,65 @@ export const scheduleApi = {
   updateDayStatus: (scheduleId, dayDate, status, skipReason) => api.put(`/schedules/${scheduleId}/days/${dayDate}/status`, { status, skipReason })
 }
 
+// ===== 财务模块 API =====
+// 账户 API
+export const financeAccountApi = {
+  list: () => api.get('/financeaccounts'),
+  get: (id) => api.get(`/financeaccounts/${id}`),
+  create: (data) => api.post('/financeaccounts', data),
+  update: (id, data) => api.put(`/financeaccounts/${id}`, data),
+  delete: (id) => api.delete(`/financeaccounts/${id}`),
+  setDefault: (id) => api.put(`/financeaccounts/${id}/default`)
+}
+
+// 支出 API
+export const financeExpenseApi = {
+  list: (params = {}) => api.get('/financeexpenses', { params }),
+  get: (id) => api.get(`/financeexpenses/${id}`),
+  create: (data) => api.post('/financeexpenses', data),
+  update: (id, data) => api.put(`/financeexpenses/${id}`, data),
+  delete: (id) => api.delete(`/financeexpenses/${id}`)
+}
+
+// 支出分类 API
+export const financeCategoryApi = {
+  list: () => api.get('/financecategories'),
+  create: (data) => api.post('/financecategories', data),
+  update: (id, data) => api.put(`/financecategories/${id}`, data),
+  delete: (id) => api.delete(`/financecategories/${id}`)
+}
+
+// 收入 API
+export const financeIncomeApi = {
+  list: (params = {}) => api.get('/financeincomes', { params }),
+  get: (id) => api.get(`/financeincomes/${id}`),
+  create: (data) => api.post('/financeincomes', data),
+  update: (id, data) => api.put(`/financeincomes/${id}`, data),
+  delete: (id) => api.delete(`/financeincomes/${id}`),
+  stats: (params = {}) => api.get('/financeincomes/stats', { params })
+}
+
+// 工资模板 API
+export const financeSalaryTemplateApi = {
+  list: () => api.get('/financesalarytemplates'),
+  get: (id) => api.get(`/financesalarytemplates/${id}`),
+  create: (data) => api.post('/financesalarytemplates', data),
+  update: (id, data) => api.put(`/financesalarytemplates/${id}`, data),
+  delete: (id) => api.delete(`/financesalarytemplates/${id}`)
+}
+
+// 转账 API
+export const financeTransferApi = {
+  list: (params = {}) => api.get('/financetransfers', { params }),
+  create: (data) => api.post('/financetransfers', data),
+  balanceTrend: (params = {}) => api.get('/financetransfers/stats/balance-trend', { params }),
+  monthlySavings: (params = {}) => api.get('/financetransfers/stats/monthly-savings', { params })
+}
+
+// 账户快照 API
+export const financeSnapshotApi = {
+  list: (params = {}) => api.get('/financesnapshots', { params }),
+  manual: () => api.post('/financesnapshots/manual')
+}
+
 export default api

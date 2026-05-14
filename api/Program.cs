@@ -52,8 +52,10 @@ builder.Services.AddScoped<AiBalanceService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<IFileLogService, FileLogService>(); // 所有环境都需要
 builder.Services.AddScoped<ScheduleService>();
+builder.Services.AddScoped<FinanceAIService>();
 builder.Services.AddSingleton<SseService>();
 builder.Services.AddHostedService<ReminderBackgroundService>();
+builder.Services.AddHostedService<FinanceBackgroundService>();
 
 // 配置控制器 + JSON选项
 builder.Services.AddControllers(options =>
@@ -680,8 +682,239 @@ using (var scope = app.Services.CreateScope())
             VALUES ('20260415165055_AddUserThemeAndDensity', '8.0.0')";
         command.ExecuteNonQuery();
         
+        // 24. 创建 FinanceExpenseCategories 表（如果不存在）
+        if (!TableExists("FinanceExpenseCategories"))
+        {
+            command.CommandText = @"
+                CREATE TABLE FinanceExpenseCategories (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Name VARCHAR(50) NOT NULL,
+                    Icon VARCHAR(100) NULL,
+                    Color VARCHAR(20) NOT NULL DEFAULT '#4A90D9',
+                    IsSystem TINYINT(1) NOT NULL,
+                    SortOrder INT NOT NULL,
+                    CreatedAt DATETIME(6) NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+
+            // 插入预设支出分类种子数据
+            command.CommandText = @"
+                INSERT INTO FinanceExpenseCategories (Id, Name, Icon, Color, IsSystem, SortOrder, CreatedAt) VALUES
+                (1, '餐饮', 'coffee', '#F5C26B', 1, 1, NOW()),
+                (2, '交通', 'car', '#4A90D9', 1, 2, NOW()),
+                (3, '购物', 'cart', '#E8908A', 1, 3, NOW()),
+                (4, '居住', 'home', '#67CBAB', 1, 4, NOW()),
+                (5, '娱乐', 'game', '#A78BFA', 1, 5, NOW()),
+                (6, '医疗', 'heart-pulse', '#E8908A', 1, 6, NOW()),
+                (7, '教育', 'book', '#4A90D9', 1, 7, NOW()),
+                (8, '通讯', 'phone', '#67CBAB', 1, 8, NOW()),
+                (9, '其他', 'circle', '#999999', 1, 9, NOW())
+                ON DUPLICATE KEY UPDATE Name=VALUES(Name)";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ FinanceExpenseCategories 表已创建并填充种子数据");
+        }
+
+        // 25. 创建 FinanceAccounts 表（如果不存在）
+        if (!TableExists("FinanceAccounts"))
+        {
+            command.CommandText = @"
+                CREATE TABLE FinanceAccounts (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Name VARCHAR(100) NOT NULL,
+                    Type VARCHAR(50) NOT NULL DEFAULT 'cash',
+                    Icon VARCHAR(100) NULL,
+                    Color VARCHAR(20) NOT NULL DEFAULT '#4A90D9',
+                    Balance DECIMAL(18,2) NOT NULL DEFAULT 0,
+                    IsDefaultExpense TINYINT(1) NOT NULL DEFAULT 0,
+                    SortOrder INT NOT NULL DEFAULT 0,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ FinanceAccounts 表已创建");
+        }
+
+        // 26. 创建 FinanceExpenses 表（如果不存在）
+        if (!TableExists("FinanceExpenses"))
+        {
+            command.CommandText = @"
+                CREATE TABLE FinanceExpenses (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Type VARCHAR(20) NOT NULL DEFAULT 'simple',
+                    Amount DECIMAL(18,2) NOT NULL,
+                    Purpose VARCHAR(500) NOT NULL,
+                    CategoryId INT NULL,
+                    AccountId INT NOT NULL,
+                    ExpenseDate DATETIME(6) NOT NULL,
+                    Remark VARCHAR(500) NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (CategoryId) REFERENCES FinanceExpenseCategories(Id) ON DELETE SET NULL,
+                    FOREIGN KEY (AccountId) REFERENCES FinanceAccounts(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ FinanceExpenses 表已创建");
+        }
+
+        // 27. 创建 FinanceExpenseItems 表（如果不存在）
+        if (!TableExists("FinanceExpenseItems"))
+        {
+            command.CommandText = @"
+                CREATE TABLE FinanceExpenseItems (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    ExpenseId INT NOT NULL,
+                    Name VARCHAR(200) NOT NULL,
+                    Quantity INT NOT NULL,
+                    Unit VARCHAR(20) NULL,
+                    UnitPrice DECIMAL(18,2) NOT NULL,
+                    Subtotal DECIMAL(18,2) NOT NULL,
+                    SortOrder INT NOT NULL,
+                    FOREIGN KEY (ExpenseId) REFERENCES FinanceExpenses(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ FinanceExpenseItems 表已创建");
+        }
+
+        // 28. 创建 FinanceIncomes 表（如果不存在）
+        if (!TableExists("FinanceIncomes"))
+        {
+            command.CommandText = @"
+                CREATE TABLE FinanceIncomes (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Type VARCHAR(20) NOT NULL DEFAULT 'misc',
+                    Amount DECIMAL(18,2) NOT NULL,
+                    Content VARCHAR(500) NOT NULL,
+                    Remark VARCHAR(500) NULL,
+                    ProjectId INT NULL,
+                    IncomeDate DATETIME(6) NOT NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (ProjectId) REFERENCES Projects(Id) ON DELETE SET NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ FinanceIncomes 表已创建");
+        }
+
+        // 29. 创建 FinanceSalaryTemplates 表（如果不存在）
+        if (!TableExists("FinanceSalaryTemplates"))
+        {
+            command.CommandText = @"
+                CREATE TABLE FinanceSalaryTemplates (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    Title VARCHAR(200) NOT NULL,
+                    Remark VARCHAR(500) NULL,
+                    IsActive TINYINT(1) NOT NULL DEFAULT 1,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ FinanceSalaryTemplates 表已创建");
+        }
+
+        // 30. 创建 FinanceSalaryTemplateItems 表（如果不存在）
+        if (!TableExists("FinanceSalaryTemplateItems"))
+        {
+            command.CommandText = @"
+                CREATE TABLE FinanceSalaryTemplateItems (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    TemplateId INT NOT NULL,
+                    Name VARCHAR(100) NOT NULL,
+                    SortOrder INT NOT NULL,
+                    FOREIGN KEY (TemplateId) REFERENCES FinanceSalaryTemplates(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ FinanceSalaryTemplateItems 表已创建");
+        }
+
+        // 31. 创建 FinanceSalaryDetails 表（如果不存在）
+        if (!TableExists("FinanceSalaryDetails"))
+        {
+            command.CommandText = @"
+                CREATE TABLE FinanceSalaryDetails (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    IncomeId INT NOT NULL,
+                    TemplateId INT NOT NULL,
+                    SalaryDate DATETIME(6) NOT NULL,
+                    Remark VARCHAR(500) NULL,
+                    ActualItemId INT NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    UpdatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (IncomeId) REFERENCES FinanceIncomes(Id) ON DELETE CASCADE,
+                    FOREIGN KEY (TemplateId) REFERENCES FinanceSalaryTemplates(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ FinanceSalaryDetails 表已创建");
+        }
+
+        // 32. 创建 FinanceSalaryDetailItems 表（如果不存在）
+        if (!TableExists("FinanceSalaryDetailItems"))
+        {
+            command.CommandText = @"
+                CREATE TABLE FinanceSalaryDetailItems (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    DetailId INT NOT NULL,
+                    TemplateItemId INT NOT NULL,
+                    Amount DECIMAL(18,2) NOT NULL,
+                    FOREIGN KEY (DetailId) REFERENCES FinanceSalaryDetails(Id) ON DELETE CASCADE,
+                    FOREIGN KEY (TemplateItemId) REFERENCES FinanceSalaryTemplateItems(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ FinanceSalaryDetailItems 表已创建");
+        }
+
+        // 33. 创建 FinanceIncomeAccounts 表（如果不存在）
+        if (!TableExists("FinanceIncomeAccounts"))
+        {
+            command.CommandText = @"
+                CREATE TABLE FinanceIncomeAccounts (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    IncomeId INT NOT NULL,
+                    AccountId INT NOT NULL,
+                    Amount DECIMAL(18,2) NOT NULL,
+                    FOREIGN KEY (IncomeId) REFERENCES FinanceIncomes(Id) ON DELETE CASCADE,
+                    FOREIGN KEY (AccountId) REFERENCES FinanceAccounts(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ FinanceIncomeAccounts 表已创建");
+        }
+
+        // 34. 创建 FinanceAccountTransfers 表（如果不存在）
+        if (!TableExists("FinanceAccountTransfers"))
+        {
+            command.CommandText = @"
+                CREATE TABLE FinanceAccountTransfers (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    FromAccountId INT NOT NULL,
+                    ToAccountId INT NOT NULL,
+                    Amount DECIMAL(18,2) NOT NULL,
+                    Remark VARCHAR(500) NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (FromAccountId) REFERENCES FinanceAccounts(Id) ON DELETE CASCADE,
+                    FOREIGN KEY (ToAccountId) REFERENCES FinanceAccounts(Id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ FinanceAccountTransfers 表已创建");
+        }
+
+        // 35. 创建 FinanceAccountSnapshots 表（如果不存在）
+        if (!TableExists("FinanceAccountSnapshots"))
+        {
+            command.CommandText = @"
+                CREATE TABLE FinanceAccountSnapshots (
+                    Id INT AUTO_INCREMENT PRIMARY KEY,
+                    AccountId INT NOT NULL,
+                    SnapshotDate DATETIME(6) NOT NULL,
+                    Balance DECIMAL(18,2) NOT NULL,
+                    CreatedAt DATETIME(6) NOT NULL,
+                    FOREIGN KEY (AccountId) REFERENCES FinanceAccounts(Id) ON DELETE CASCADE,
+                    UNIQUE KEY UK_AccountId_SnapshotDate (AccountId, SnapshotDate)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            command.ExecuteNonQuery();
+            logger.LogInformation("✓ FinanceAccountSnapshots 表已创建");
+        }
+
         connection.Close();
-        logger.LogInformation("✓ 数据库结构同步完成 - 共 19 个表已检查/创建");
+        logger.LogInformation("✓ 数据库结构同步完成 - 共 31 个表已检查/创建");
     }
     catch (Exception ex)
     {

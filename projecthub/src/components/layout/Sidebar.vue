@@ -86,6 +86,12 @@ import {
   RobotIcon,
   FileIcon,
   CalendarIcon,
+  WalletIcon,
+  CalculatorIcon,
+  ChartBarIcon,
+  ChartLineIcon,
+  ChartPieIcon,
+  MoneyIcon,
 } from 'tdesign-icons-vue-next'
 import { useLayoutState } from '@/composables/useLayoutState'
 import { useScheduleSSE } from '@/composables/useScheduleSSE'
@@ -129,9 +135,27 @@ const navGroups = [
       { path: '/ai', title: 'AI 助手', icon: RobotIcon },
     ],
   },
+  {
+    title: '财务管理',
+    items: [
+      { path: '/finance-manager/overview', title: '财务概览', icon: WalletIcon },
+      { path: '/finance-manager/expenses', title: '支出记录', icon: ChartBarIcon },
+      { path: '/finance-manager/income', title: '收入记录', icon: ChartLineIcon },
+      { path: '/finance-manager/accounts', title: '账户管理', icon: WalletIcon },
+      { path: '/finance-manager/salary', title: '工资管理', icon: CalculatorIcon },
+      { path: '/finance-manager/stats', title: '统计报表', icon: ChartPieIcon },
+      { path: '/finance-manager/investment', title: '理财', icon: MoneyIcon },
+    ],
+  },
 ]
 
-const isActive = (path) => (path === '/' ? route.path === '/' : route.path.startsWith(path))
+const isActive = (path) => {
+  if (path === '/') return route.path === '/'
+  if (path.startsWith('/finance-manager')) {
+    return route.path.startsWith(path)
+  }
+  return route.path === path
+}
 const handleLogout = () => router.push('/login')
 </script>
 

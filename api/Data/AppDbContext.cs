@@ -43,6 +43,20 @@ public class AppDbContext : DbContext
     public DbSet<ScheduleDay> ScheduleDays => Set<ScheduleDay>();
     public DbSet<ScheduleReminder> ScheduleReminders => Set<ScheduleReminder>();
 
+    // 财务模块
+    public DbSet<FinanceAccount> FinanceAccounts => Set<FinanceAccount>();
+    public DbSet<FinanceExpense> FinanceExpenses => Set<FinanceExpense>();
+    public DbSet<FinanceExpenseItem> FinanceExpenseItems => Set<FinanceExpenseItem>();
+    public DbSet<FinanceExpenseCategory> FinanceExpenseCategories => Set<FinanceExpenseCategory>();
+    public DbSet<FinanceIncome> FinanceIncomes => Set<FinanceIncome>();
+    public DbSet<FinanceSalaryTemplate> FinanceSalaryTemplates => Set<FinanceSalaryTemplate>();
+    public DbSet<FinanceSalaryTemplateItem> FinanceSalaryTemplateItems => Set<FinanceSalaryTemplateItem>();
+    public DbSet<FinanceSalaryDetail> FinanceSalaryDetails => Set<FinanceSalaryDetail>();
+    public DbSet<FinanceSalaryDetailItem> FinanceSalaryDetailItems => Set<FinanceSalaryDetailItem>();
+    public DbSet<FinanceIncomeAccount> FinanceIncomeAccounts => Set<FinanceIncomeAccount>();
+    public DbSet<FinanceAccountTransfer> FinanceAccountTransfers => Set<FinanceAccountTransfer>();
+    public DbSet<FinanceAccountSnapshot> FinanceAccountSnapshots => Set<FinanceAccountSnapshot>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -289,6 +303,166 @@ public class AppDbContext : DbContext
             entity.HasOne(sr => sr.Schedule)
                   .WithMany(s => s.ScheduleReminders)
                   .HasForeignKey(sr => sr.ScheduleId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ===== 财务模块配置 =====
+
+        // FinanceAccount 配置
+        modelBuilder.Entity<FinanceAccount>(entity =>
+        {
+            entity.HasIndex(e => e.SortOrder);
+        });
+
+        // FinanceExpense 配置
+        modelBuilder.Entity<FinanceExpense>(entity =>
+        {
+            entity.HasIndex(e => e.CategoryId);
+            entity.HasIndex(e => e.AccountId);
+            entity.HasIndex(e => e.ExpenseDate);
+            entity.HasIndex(e => e.Type);
+
+            entity.HasOne(e => e.Category)
+                  .WithMany(c => c.Expenses)
+                  .HasForeignKey(e => e.CategoryId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(e => e.Account)
+                  .WithMany(a => a.Expenses)
+                  .HasForeignKey(e => e.AccountId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FinanceExpenseItem 配置
+        modelBuilder.Entity<FinanceExpenseItem>(entity =>
+        {
+            entity.HasIndex(e => e.ExpenseId);
+            entity.HasIndex(e => new { e.ExpenseId, e.SortOrder });
+
+            entity.HasOne(e => e.Expense)
+                  .WithMany(ex => ex.Items)
+                  .HasForeignKey(e => e.ExpenseId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FinanceExpenseCategory 配置
+        modelBuilder.Entity<FinanceExpenseCategory>(entity =>
+        {
+            entity.HasIndex(e => e.SortOrder);
+            entity.HasIndex(e => e.Name);
+        });
+
+        // FinanceIncome 配置
+        modelBuilder.Entity<FinanceIncome>(entity =>
+        {
+            entity.HasIndex(e => e.Type);
+            entity.HasIndex(e => e.IncomeDate);
+            entity.HasIndex(e => e.ProjectId);
+
+            entity.HasOne(e => e.Project)
+                  .WithMany()
+                  .HasForeignKey(e => e.ProjectId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // FinanceSalaryTemplate 配置
+        modelBuilder.Entity<FinanceSalaryTemplate>(entity =>
+        {
+            entity.HasIndex(e => e.IsActive);
+        });
+
+        // FinanceSalaryTemplateItem 配置
+        modelBuilder.Entity<FinanceSalaryTemplateItem>(entity =>
+        {
+            entity.HasIndex(e => e.TemplateId);
+            entity.HasIndex(e => new { e.TemplateId, e.SortOrder });
+
+            entity.HasOne(e => e.Template)
+                  .WithMany(t => t.TemplateItems)
+                  .HasForeignKey(e => e.TemplateId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FinanceSalaryDetail 配置
+        modelBuilder.Entity<FinanceSalaryDetail>(entity =>
+        {
+            entity.HasIndex(e => e.IncomeId);
+            entity.HasIndex(e => e.TemplateId);
+            entity.HasIndex(e => e.SalaryDate);
+
+            entity.HasOne(e => e.Income)
+                  .WithOne(i => i.SalaryDetail)
+                  .HasForeignKey<FinanceSalaryDetail>(e => e.IncomeId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Template)
+                  .WithMany(t => t.SalaryDetails)
+                  .HasForeignKey(e => e.TemplateId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FinanceSalaryDetailItem 配置
+        modelBuilder.Entity<FinanceSalaryDetailItem>(entity =>
+        {
+            entity.HasIndex(e => e.DetailId);
+            entity.HasIndex(e => e.TemplateItemId);
+
+            entity.HasOne(e => e.Detail)
+                  .WithMany(d => d.DetailItems)
+                  .HasForeignKey(e => e.DetailId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.TemplateItem)
+                  .WithMany(ti => ti.DetailItems)
+                  .HasForeignKey(e => e.TemplateItemId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FinanceIncomeAccount 配置
+        modelBuilder.Entity<FinanceIncomeAccount>(entity =>
+        {
+            entity.HasIndex(e => e.IncomeId);
+            entity.HasIndex(e => e.AccountId);
+
+            entity.HasOne(e => e.Income)
+                  .WithMany(i => i.IncomeAccounts)
+                  .HasForeignKey(e => e.IncomeId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Account)
+                  .WithMany(a => a.IncomeAccounts)
+                  .HasForeignKey(e => e.AccountId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FinanceAccountTransfer 配置
+        modelBuilder.Entity<FinanceAccountTransfer>(entity =>
+        {
+            entity.HasIndex(e => e.FromAccountId);
+            entity.HasIndex(e => e.ToAccountId);
+            entity.HasIndex(e => e.CreatedAt);
+
+            entity.HasOne(e => e.FromAccount)
+                  .WithMany(a => a.FromTransfers)
+                  .HasForeignKey(e => e.FromAccountId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.ToAccount)
+                  .WithMany(a => a.ToTransfers)
+                  .HasForeignKey(e => e.ToAccountId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FinanceAccountSnapshot 配置
+        modelBuilder.Entity<FinanceAccountSnapshot>(entity =>
+        {
+            entity.HasIndex(e => e.AccountId);
+            entity.HasIndex(e => e.SnapshotDate);
+            entity.HasIndex(e => new { e.AccountId, e.SnapshotDate }).IsUnique();
+
+            entity.HasOne(e => e.Account)
+                  .WithMany(a => a.Snapshots)
+                  .HasForeignKey(e => e.AccountId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }
